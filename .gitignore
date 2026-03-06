@@ -4,6 +4,7 @@
 driverhub
 driverhub-gki
 tests/rtc_ops_test
+tests/dependency_sort_test
 
 # Editor files
 *.swp
