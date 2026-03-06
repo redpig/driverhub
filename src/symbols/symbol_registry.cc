@@ -20,6 +20,7 @@
 #include "src/shim/kernel/workqueue.h"
 #include "src/shim/subsystem/cfg80211.h"
 #include "src/shim/subsystem/drm.h"
+#include "src/shim/subsystem/fs.h"
 #include "src/shim/subsystem/gpio.h"
 #include "src/shim/subsystem/i2c.h"
 #include "src/shim/subsystem/input.h"
@@ -374,6 +375,75 @@ void SymbolRegistry::RegisterKmiSymbols() {
   REGISTER_SYMBOL(free_netdev);
   REGISTER_SYMBOL(register_netdev);
   REGISTER_SYMBOL(unregister_netdev);
+
+  // VFS — character devices
+  REGISTER_SYMBOL(cdev_init);
+  REGISTER_SYMBOL(cdev_alloc);
+  REGISTER_SYMBOL(cdev_add);
+  REGISTER_SYMBOL(cdev_del);
+  REGISTER_SYMBOL(register_chrdev_region);
+  REGISTER_SYMBOL(alloc_chrdev_region);
+  REGISTER_SYMBOL(unregister_chrdev_region);
+  REGISTER_SYMBOL(register_chrdev);
+  REGISTER_SYMBOL(unregister_chrdev);
+
+  // VFS — class/device
+  REGISTER_SYMBOL(class_create);
+  REGISTER_SYMBOL(class_destroy);
+  REGISTER_SYMBOL(device_create);
+  REGISTER_SYMBOL(device_destroy);
+
+  // VFS — misc device
+  REGISTER_SYMBOL(misc_register);
+  REGISTER_SYMBOL(misc_deregister);
+
+  // VFS — seq_file
+  REGISTER_SYMBOL(seq_printf);
+  REGISTER_SYMBOL(seq_puts);
+  REGISTER_SYMBOL(seq_putc);
+  REGISTER_SYMBOL(seq_write);
+  REGISTER_SYMBOL(seq_open);
+  REGISTER_SYMBOL(seq_release);
+  REGISTER_SYMBOL(seq_read);
+  REGISTER_SYMBOL(seq_lseek);
+  REGISTER_SYMBOL(single_open);
+  REGISTER_SYMBOL(single_release);
+
+  // VFS — procfs
+  REGISTER_SYMBOL(proc_create);
+  REGISTER_SYMBOL(proc_create_data);
+  REGISTER_SYMBOL(proc_mkdir);
+  REGISTER_SYMBOL(proc_remove);
+  REGISTER_SYMBOL(remove_proc_entry);
+  REGISTER_SYMBOL(proc_create_single_data);
+
+  // VFS — debugfs
+  REGISTER_SYMBOL(debugfs_create_dir);
+  REGISTER_SYMBOL(debugfs_create_file);
+  REGISTER_SYMBOL(debugfs_remove);
+  REGISTER_SYMBOL(debugfs_remove_recursive);
+  REGISTER_SYMBOL(debugfs_create_u8);
+  REGISTER_SYMBOL(debugfs_create_u16);
+  REGISTER_SYMBOL(debugfs_create_u32);
+  REGISTER_SYMBOL(debugfs_create_u64);
+  REGISTER_SYMBOL(debugfs_create_bool);
+  REGISTER_SYMBOL(debugfs_create_blob);
+
+  // VFS — sysfs
+  REGISTER_SYMBOL(sysfs_create_group);
+  REGISTER_SYMBOL(sysfs_remove_group);
+  REGISTER_SYMBOL(sysfs_create_file);
+  REGISTER_SYMBOL(sysfs_remove_file);
+  REGISTER_SYMBOL(device_create_file);
+  REGISTER_SYMBOL(device_remove_file);
+  REGISTER_SYMBOL(sysfs_notify);
+
+  // VFS — kobject
+  REGISTER_SYMBOL(kobject_init);
+  REGISTER_SYMBOL(kobject_add);
+  REGISTER_SYMBOL(kobject_create_and_add);
+  REGISTER_SYMBOL(kobject_put);
+  REGISTER_SYMBOL(kobject_del);
 
   fprintf(stderr, "driverhub: registered %zu KMI symbols\n", symbols_.size());
 }

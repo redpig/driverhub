@@ -42,6 +42,7 @@ source_set("driverhub-core") {
     "src/shim/kernel/workqueue.cc",
     "src/shim/subsystem/cfg80211.cc",
     "src/shim/subsystem/drm.cc",
+    "src/shim/subsystem/fs.cc",
     "src/shim/subsystem/gpio.cc",
     "src/shim/subsystem/i2c.cc",
     "src/shim/subsystem/input.cc",
