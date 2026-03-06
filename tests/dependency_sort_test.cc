@@ -4,125 +4,138 @@
 
 // Unit tests for module dependency topological sort.
 
-#include <cstdio>
-#include <cstdlib>
 #include <string>
 #include <vector>
 
+#include <gtest/gtest.h>
+
 #include "src/loader/dependency_sort.h"
 
-static int g_pass = 0;
-static int g_fail = 0;
+namespace {
 
-#define CHECK(cond, msg) do { \
-  if (cond) { printf("  PASS: %s\n", msg); g_pass++; } \
-  else { printf("  FAIL: %s\n", msg); g_fail++; } \
-} while(0)
-
-int main() {
-  printf("\n=== Dependency sort tests ===\n\n");
-
-  // Test 1: No dependencies — should preserve relative order.
-  {
-    std::vector<std::pair<std::string, driverhub::ModuleInfo>> modules;
-    driverhub::ModuleInfo a, b, c;
-    a.name = "a"; b.name = "b"; c.name = "c";
-    modules.push_back({"a", a});
-    modules.push_back({"b", b});
-    modules.push_back({"c", c});
-
-    std::vector<size_t> order;
-    bool ok = driverhub::TopologicalSortModules(modules, &order);
-    CHECK(ok, "no-deps: sort succeeds");
-    CHECK(order.size() == 3, "no-deps: all 3 modules in output");
+// Helper: find the position of module index `idx` in the sorted order.
+size_t FindPosition(const std::vector<size_t>& order, size_t idx) {
+  for (size_t i = 0; i < order.size(); i++) {
+    if (order[i] == idx) return i;
   }
-
-  // Test 2: Linear dependency chain a -> b -> c.
-  {
-    std::vector<std::pair<std::string, driverhub::ModuleInfo>> modules;
-    driverhub::ModuleInfo a, b, c;
-    a.name = "a";
-    b.name = "b"; b.depends = {"a"};
-    c.name = "c"; c.depends = {"b"};
-    modules.push_back({"a", a});
-    modules.push_back({"b", b});
-    modules.push_back({"c", c});
-
-    std::vector<size_t> order;
-    bool ok = driverhub::TopologicalSortModules(modules, &order);
-    CHECK(ok, "linear-chain: sort succeeds");
-    CHECK(order.size() == 3, "linear-chain: all 3 modules");
-
-    // a must appear before b, b before c.
-    size_t pos_a = 0, pos_b = 0, pos_c = 0;
-    for (size_t i = 0; i < order.size(); i++) {
-      if (order[i] == 0) pos_a = i;
-      if (order[i] == 1) pos_b = i;
-      if (order[i] == 2) pos_c = i;
-    }
-    CHECK(pos_a < pos_b, "linear-chain: a before b");
-    CHECK(pos_b < pos_c, "linear-chain: b before c");
-  }
-
-  // Test 3: Diamond dependency: d depends on b and c, both depend on a.
-  {
-    std::vector<std::pair<std::string, driverhub::ModuleInfo>> modules;
-    driverhub::ModuleInfo a, b, c, d;
-    a.name = "a";
-    b.name = "b"; b.depends = {"a"};
-    c.name = "c"; c.depends = {"a"};
-    d.name = "d"; d.depends = {"b", "c"};
-    modules.push_back({"a", a});
-    modules.push_back({"b", b});
-    modules.push_back({"c", c});
-    modules.push_back({"d", d});
-
-    std::vector<size_t> order;
-    bool ok = driverhub::TopologicalSortModules(modules, &order);
-    CHECK(ok, "diamond: sort succeeds");
-    CHECK(order.size() == 4, "diamond: all 4 modules");
-
-    size_t pos_a = 0, pos_b = 0, pos_c = 0, pos_d = 0;
-    for (size_t i = 0; i < order.size(); i++) {
-      if (order[i] == 0) pos_a = i;
-      if (order[i] == 1) pos_b = i;
-      if (order[i] == 2) pos_c = i;
-      if (order[i] == 3) pos_d = i;
-    }
-    CHECK(pos_a < pos_b, "diamond: a before b");
-    CHECK(pos_a < pos_c, "diamond: a before c");
-    CHECK(pos_b < pos_d, "diamond: b before d");
-    CHECK(pos_c < pos_d, "diamond: c before d");
-  }
-
-  // Test 4: Dependency cycle — should fail.
-  {
-    std::vector<std::pair<std::string, driverhub::ModuleInfo>> modules;
-    driverhub::ModuleInfo a, b;
-    a.name = "a"; a.depends = {"b"};
-    b.name = "b"; b.depends = {"a"};
-    modules.push_back({"a", a});
-    modules.push_back({"b", b});
-
-    std::vector<size_t> order;
-    bool ok = driverhub::TopologicalSortModules(modules, &order);
-    CHECK(!ok, "cycle: sort correctly detects cycle");
-  }
-
-  // Test 5: External dependency (not in set) — should succeed.
-  {
-    std::vector<std::pair<std::string, driverhub::ModuleInfo>> modules;
-    driverhub::ModuleInfo a;
-    a.name = "a"; a.depends = {"external_lib"};
-    modules.push_back({"a", a});
-
-    std::vector<size_t> order;
-    bool ok = driverhub::TopologicalSortModules(modules, &order);
-    CHECK(ok, "external-dep: sort succeeds (external dep skipped)");
-    CHECK(order.size() == 1, "external-dep: module a in output");
-  }
-
-  printf("\n--- Results: %d/%d passed ---\n\n",
-         g_pass, g_pass + g_fail);
-  return g_fail > 0 ? 1 : 0;
+  ADD_FAILURE() << "index " << idx << " not found in order";
+  return order.size();
 }
+
+TEST(DependencySortTest, NoDependencies) {
+  std::vector<std::pair<std::string, driverhub::ModuleInfo>> modules;
+  driverhub::ModuleInfo a, b, c;
+  a.name = "a"; b.name = "b"; c.name = "c";
+  modules.push_back({"a", a});
+  modules.push_back({"b", b});
+  modules.push_back({"c", c});
+
+  std::vector<size_t> order;
+  ASSERT_TRUE(driverhub::TopologicalSortModules(modules, &order));
+  EXPECT_EQ(order.size(), 3u);
+}
+
+TEST(DependencySortTest, LinearChain) {
+  std::vector<std::pair<std::string, driverhub::ModuleInfo>> modules;
+  driverhub::ModuleInfo a, b, c;
+  a.name = "a";
+  b.name = "b"; b.depends = {"a"};
+  c.name = "c"; c.depends = {"b"};
+  modules.push_back({"a", a});
+  modules.push_back({"b", b});
+  modules.push_back({"c", c});
+
+  std::vector<size_t> order;
+  ASSERT_TRUE(driverhub::TopologicalSortModules(modules, &order));
+  ASSERT_EQ(order.size(), 3u);
+
+  // a must appear before b, b before c.
+  EXPECT_LT(FindPosition(order, 0), FindPosition(order, 1));
+  EXPECT_LT(FindPosition(order, 1), FindPosition(order, 2));
+}
+
+TEST(DependencySortTest, DiamondDependency) {
+  std::vector<std::pair<std::string, driverhub::ModuleInfo>> modules;
+  driverhub::ModuleInfo a, b, c, d;
+  a.name = "a";
+  b.name = "b"; b.depends = {"a"};
+  c.name = "c"; c.depends = {"a"};
+  d.name = "d"; d.depends = {"b", "c"};
+  modules.push_back({"a", a});
+  modules.push_back({"b", b});
+  modules.push_back({"c", c});
+  modules.push_back({"d", d});
+
+  std::vector<size_t> order;
+  ASSERT_TRUE(driverhub::TopologicalSortModules(modules, &order));
+  ASSERT_EQ(order.size(), 4u);
+
+  EXPECT_LT(FindPosition(order, 0), FindPosition(order, 1));  // a before b
+  EXPECT_LT(FindPosition(order, 0), FindPosition(order, 2));  // a before c
+  EXPECT_LT(FindPosition(order, 1), FindPosition(order, 3));  // b before d
+  EXPECT_LT(FindPosition(order, 2), FindPosition(order, 3));  // c before d
+}
+
+TEST(DependencySortTest, CycleDetection) {
+  std::vector<std::pair<std::string, driverhub::ModuleInfo>> modules;
+  driverhub::ModuleInfo a, b;
+  a.name = "a"; a.depends = {"b"};
+  b.name = "b"; b.depends = {"a"};
+  modules.push_back({"a", a});
+  modules.push_back({"b", b});
+
+  std::vector<size_t> order;
+  EXPECT_FALSE(driverhub::TopologicalSortModules(modules, &order));
+}
+
+TEST(DependencySortTest, ExternalDependencySkipped) {
+  std::vector<std::pair<std::string, driverhub::ModuleInfo>> modules;
+  driverhub::ModuleInfo a;
+  a.name = "a"; a.depends = {"external_lib"};
+  modules.push_back({"a", a});
+
+  std::vector<size_t> order;
+  ASSERT_TRUE(driverhub::TopologicalSortModules(modules, &order));
+  EXPECT_EQ(order.size(), 1u);
+}
+
+TEST(DependencySortTest, EmptyModuleList) {
+  std::vector<std::pair<std::string, driverhub::ModuleInfo>> modules;
+
+  std::vector<size_t> order;
+  ASSERT_TRUE(driverhub::TopologicalSortModules(modules, &order));
+  EXPECT_EQ(order.size(), 0u);
+}
+
+TEST(DependencySortTest, SelfDependency) {
+  std::vector<std::pair<std::string, driverhub::ModuleInfo>> modules;
+  driverhub::ModuleInfo a;
+  a.name = "a"; a.depends = {"a"};
+  modules.push_back({"a", a});
+
+  std::vector<size_t> order;
+  EXPECT_FALSE(driverhub::TopologicalSortModules(modules, &order));
+}
+
+TEST(DependencySortTest, LongChain) {
+  // Build a chain of 10 modules: m0 <- m1 <- m2 <- ... <- m9.
+  std::vector<std::pair<std::string, driverhub::ModuleInfo>> modules;
+  for (int i = 0; i < 10; i++) {
+    driverhub::ModuleInfo m;
+    m.name = "m" + std::to_string(i);
+    if (i > 0) m.depends = {"m" + std::to_string(i - 1)};
+    modules.push_back({m.name, m});
+  }
+
+  std::vector<size_t> order;
+  ASSERT_TRUE(driverhub::TopologicalSortModules(modules, &order));
+  ASSERT_EQ(order.size(), 10u);
+
+  // Verify strict ordering: each module appears after its dependency.
+  for (int i = 1; i < 10; i++) {
+    EXPECT_LT(FindPosition(order, i - 1), FindPosition(order, i))
+        << "m" << (i - 1) << " should appear before m" << i;
+  }
+}
+
+}  // namespace

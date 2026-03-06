@@ -6,9 +6,9 @@
 // (read_time, set_time) through their function pointers to verify the full
 // shim path works from module registration through ops invocation.
 
-#include <cstdio>
-#include <cstdlib>
 #include <cstring>
+
+#include <gtest/gtest.h>
 
 #include "src/bus_driver/bus_driver.h"
 
@@ -61,62 +61,52 @@ struct rtc_device *driverhub_rtc_get_device(int index);
 int driverhub_rtc_device_count(void);
 }
 
-static int tests_run = 0;
-static int tests_passed = 0;
+// Path to the RTC test module. Set from command-line arg in main().
+static const char *g_rtc_ko_path = nullptr;
 
-#define CHECK(cond, msg)                                                       \
-  do {                                                                         \
-    tests_run++;                                                               \
-    if (!(cond)) {                                                             \
-      fprintf(stderr, "  FAIL: %s\n", msg);                                    \
-    } else {                                                                   \
-      fprintf(stderr, "  PASS: %s\n", msg);                                    \
-      tests_passed++;                                                          \
-    }                                                                          \
-  } while (0)
-
-int main(int argc, char **argv) {
-  if (argc < 2) {
-    fprintf(stderr, "usage: %s <rtc-test.ko>\n", argv[0]);
-    return 1;
+class RtcOpsTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    ASSERT_NE(g_rtc_ko_path, nullptr)
+        << "usage: rtc_ops_test <rtc-test.ko>";
+    ASSERT_EQ(bus_.Init(), 0) << "bus driver init failed";
+    ASSERT_EQ(bus_.LoadModuleFromFile(g_rtc_ko_path), 0)
+        << "failed to load " << g_rtc_ko_path;
   }
 
-  fprintf(stderr, "\n=== RTC ops end-to-end test ===\n\n");
-
-  driverhub::BusDriver bus;
-  auto status = bus.Init();
-  if (status != 0) {
-    fprintf(stderr, "fatal: bus driver init failed: %d\n", status);
-    return 1;
+  void TearDown() override {
+    bus_.Shutdown();
   }
 
-  status = bus.LoadModuleFromFile(argv[1]);
-  if (status != 0) {
-    fprintf(stderr, "fatal: failed to load %s: %d\n", argv[1], status);
-    return 1;
-  }
+  driverhub::BusDriver bus_;
+};
 
-  fprintf(stderr, "\n--- Exercising RTC ops ---\n\n");
+TEST_F(RtcOpsTest, AtLeastOneDevice) {
+  EXPECT_GE(driverhub_rtc_device_count(), 1);
+}
 
-  int count = driverhub_rtc_device_count();
-  CHECK(count >= 1, "at least one RTC device registered");
-
-  // Exercise rtc0 (uses test_rtc_ops_noalm: read_time + set_time only).
+TEST_F(RtcOpsTest, Rtc0Exists) {
   struct rtc_device *rtc0 = driverhub_rtc_get_device(0);
-  CHECK(rtc0 != nullptr, "rtc0 exists");
-  CHECK(rtc0->ops != nullptr, "rtc0 has ops");
-  CHECK(rtc0->ops->read_time != nullptr, "rtc0 has read_time");
-  CHECK(rtc0->ops->set_time != nullptr, "rtc0 has set_time");
+  ASSERT_NE(rtc0, nullptr);
+  ASSERT_NE(rtc0->ops, nullptr);
+  EXPECT_NE(rtc0->ops->read_time, nullptr);
+  EXPECT_NE(rtc0->ops->set_time, nullptr);
+}
 
-  // Read current time through the module's ops.
+TEST_F(RtcOpsTest, ReadTime) {
+  struct rtc_device *rtc0 = driverhub_rtc_get_device(0);
+  ASSERT_NE(rtc0, nullptr);
+
   struct rtc_time tm;
   memset(&tm, 0, sizeof(tm));
   int ret = rtc0->ops->read_time(rtc0->dev.parent, &tm);
-  CHECK(ret == 0, "read_time returns 0");
-  CHECK(tm.tm_year >= 124, "read_time year is 2024+");  // tm_year is years since 1900
-  fprintf(stderr, "  read_time -> %04d-%02d-%02d %02d:%02d:%02d\n",
-          tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
-          tm.tm_hour, tm.tm_min, tm.tm_sec);
+  EXPECT_EQ(ret, 0);
+  EXPECT_GE(tm.tm_year, 124) << "year should be 2024+";
+}
+
+TEST_F(RtcOpsTest, SetAndReadBackTime) {
+  struct rtc_device *rtc0 = driverhub_rtc_get_device(0);
+  ASSERT_NE(rtc0, nullptr);
 
   // Set a known time: 2025-06-15 12:30:00 UTC.
   struct rtc_time set_tm;
@@ -128,34 +118,36 @@ int main(int argc, char **argv) {
   set_tm.tm_min = 30;
   set_tm.tm_sec = 0;
 
-  ret = rtc0->ops->set_time(rtc0->dev.parent, &set_tm);
-  CHECK(ret == 0, "set_time returns 0");
+  ASSERT_EQ(rtc0->ops->set_time(rtc0->dev.parent, &set_tm), 0);
 
   // Read it back — should reflect the offset we just set.
   struct rtc_time read_back;
   memset(&read_back, 0, sizeof(read_back));
-  ret = rtc0->ops->read_time(rtc0->dev.parent, &read_back);
-  CHECK(ret == 0, "read_time after set returns 0");
-  // The rtc-test driver stores an offset; reading back should give ~2025-06-15.
-  CHECK(read_back.tm_year == 125, "read_back year is 2025");
-  CHECK(read_back.tm_mon == 5, "read_back month is June");
-  CHECK(read_back.tm_mday == 15, "read_back day is 15");
-  CHECK(read_back.tm_hour == 12, "read_back hour is 12");
-  CHECK(read_back.tm_min == 30, "read_back min is 30");
-  fprintf(stderr, "  read_back -> %04d-%02d-%02d %02d:%02d:%02d\n",
-          read_back.tm_year + 1900, read_back.tm_mon + 1, read_back.tm_mday,
-          read_back.tm_hour, read_back.tm_min, read_back.tm_sec);
+  ASSERT_EQ(rtc0->ops->read_time(rtc0->dev.parent, &read_back), 0);
 
-  // If we have rtc1, it should have alarm ops too.
-  if (count >= 2) {
-    struct rtc_device *rtc1 = driverhub_rtc_get_device(1);
-    CHECK(rtc1 != nullptr, "rtc1 exists");
-    CHECK(rtc1->ops->read_alarm != nullptr, "rtc1 has read_alarm");
-    CHECK(rtc1->ops->set_alarm != nullptr, "rtc1 has set_alarm");
+  EXPECT_EQ(read_back.tm_year, 125);
+  EXPECT_EQ(read_back.tm_mon, 5);
+  EXPECT_EQ(read_back.tm_mday, 15);
+  EXPECT_EQ(read_back.tm_hour, 12);
+  EXPECT_EQ(read_back.tm_min, 30);
+}
+
+TEST_F(RtcOpsTest, Rtc1HasAlarmOps) {
+  int count = driverhub_rtc_device_count();
+  if (count < 2) {
+    GTEST_SKIP() << "need at least 2 RTC devices for alarm test";
   }
 
-  fprintf(stderr, "\n--- Results: %d/%d passed ---\n\n", tests_passed, tests_run);
+  struct rtc_device *rtc1 = driverhub_rtc_get_device(1);
+  ASSERT_NE(rtc1, nullptr);
+  EXPECT_NE(rtc1->ops->read_alarm, nullptr);
+  EXPECT_NE(rtc1->ops->set_alarm, nullptr);
+}
 
-  bus.Shutdown();
-  return tests_passed == tests_run ? 0 : 1;
+int main(int argc, char **argv) {
+  ::testing::InitGoogleTest(&argc, argv);
+  if (argc >= 2) {
+    g_rtc_ko_path = argv[1];
+  }
+  return RUN_ALL_TESTS();
 }

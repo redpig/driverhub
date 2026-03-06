@@ -133,11 +133,15 @@ $(IMPORT_KO): tests/import_module.c
 $(GPIO_KO): tests/gpio_test_module.c
 	$(CC) -c -o $@ $< $(SHIM_INCLUDES) -fno-stack-protector -fno-pie
 
+# Test binaries: compile test .cc without -Isrc/shim/include to avoid
+# Linux kernel type conflicts with gtest's system header includes.
+TEST_CXXFLAGS := -std=c++17 -Wall -Wextra -Wpedantic -g -I. -fno-pie
+
 $(DEP_SORT_TEST): tests/dependency_sort_test.cc src/loader/dependency_sort.o
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ -lpthread
+	$(CXX) $(TEST_CXXFLAGS) $(LDFLAGS) -o $@ $^ -lgtest -lgtest_main -lpthread
 
 $(RTC_OPS_TEST): tests/rtc_ops_test.cc $(LIB_OBJS)
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ -lpthread
+	$(CXX) $(TEST_CXXFLAGS) $(LDFLAGS) -o $@ $^ -lgtest -lpthread
 
 $(TARGET): $(OBJS)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ -lpthread
