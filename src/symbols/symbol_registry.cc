@@ -18,8 +18,11 @@
 #include "src/shim/kernel/sync.h"
 #include "src/shim/kernel/time.h"
 #include "src/shim/kernel/workqueue.h"
+#include "src/shim/subsystem/cfg80211.h"
+#include "src/shim/subsystem/drm.h"
 #include "src/shim/subsystem/gpio.h"
 #include "src/shim/subsystem/i2c.h"
+#include "src/shim/subsystem/input.h"
 #include "src/shim/subsystem/spi.h"
 #include "src/shim/subsystem/usb.h"
 
@@ -286,6 +289,91 @@ void SymbolRegistry::RegisterKmiSymbols() {
   REGISTER_SYMBOL(usb_rcvctrlpipe);
   REGISTER_SYMBOL(usb_sndbulkpipe);
   REGISTER_SYMBOL(usb_rcvbulkpipe);
+
+  // DRM/KMS subsystem
+  REGISTER_SYMBOL(drm_dev_alloc);
+  REGISTER_SYMBOL(drm_dev_register);
+  REGISTER_SYMBOL(drm_dev_unregister);
+  REGISTER_SYMBOL(drm_dev_put);
+  REGISTER_SYMBOL(drm_mode_config_init);
+  REGISTER_SYMBOL(drm_mode_config_cleanup);
+  REGISTER_SYMBOL(drm_connector_init);
+  REGISTER_SYMBOL(drm_connector_cleanup);
+  REGISTER_SYMBOL(drm_connector_register);
+  REGISTER_SYMBOL(drm_connector_unregister);
+  REGISTER_SYMBOL(drm_connector_helper_add);
+  REGISTER_SYMBOL(drm_encoder_init);
+  REGISTER_SYMBOL(drm_encoder_cleanup);
+  REGISTER_SYMBOL(drm_crtc_init_with_planes);
+  REGISTER_SYMBOL(drm_crtc_cleanup);
+  REGISTER_SYMBOL(drm_crtc_helper_add);
+  REGISTER_SYMBOL(drm_universal_plane_init);
+  REGISTER_SYMBOL(drm_plane_cleanup);
+  REGISTER_SYMBOL(drm_plane_helper_add);
+  REGISTER_SYMBOL(drm_simple_display_pipe_init);
+  REGISTER_SYMBOL(drm_framebuffer_init);
+  REGISTER_SYMBOL(drm_framebuffer_cleanup);
+  REGISTER_SYMBOL(drm_mode_duplicate);
+  REGISTER_SYMBOL(drm_mode_probed_add);
+  REGISTER_SYMBOL(drm_mode_set_name);
+  REGISTER_SYMBOL(drm_atomic_helper_connector_reset);
+  REGISTER_SYMBOL(drm_atomic_helper_connector_destroy_state);
+  REGISTER_SYMBOL(drm_atomic_helper_connector_duplicate_state);
+  REGISTER_SYMBOL(drm_gem_object_lookup);
+  REGISTER_SYMBOL(drm_gem_object_put);
+  REGISTER_SYMBOL(drm_panel_init);
+  REGISTER_SYMBOL(drm_panel_add);
+  REGISTER_SYMBOL(drm_panel_remove);
+  REGISTER_SYMBOL(drm_panel_prepare);
+  REGISTER_SYMBOL(drm_panel_unprepare);
+  REGISTER_SYMBOL(drm_panel_enable);
+  REGISTER_SYMBOL(drm_panel_disable);
+  REGISTER_SYMBOL(devm_backlight_device_register);
+  REGISTER_SYMBOL(backlight_enable);
+  REGISTER_SYMBOL(backlight_disable);
+
+  // Input subsystem (touch, buttons)
+  REGISTER_SYMBOL(input_allocate_device);
+  REGISTER_SYMBOL(devm_input_allocate_device);
+  REGISTER_SYMBOL(input_free_device);
+  REGISTER_SYMBOL(input_register_device);
+  REGISTER_SYMBOL(input_unregister_device);
+  REGISTER_SYMBOL(input_event);
+  REGISTER_SYMBOL(input_report_key);
+  REGISTER_SYMBOL(input_report_rel);
+  REGISTER_SYMBOL(input_report_abs);
+  REGISTER_SYMBOL(input_sync);
+  REGISTER_SYMBOL(input_mt_sync);
+  REGISTER_SYMBOL(input_mt_init_slots);
+  REGISTER_SYMBOL(input_mt_slot);
+  REGISTER_SYMBOL(input_mt_report_slot_state);
+  REGISTER_SYMBOL(input_mt_sync_frame);
+  REGISTER_SYMBOL(input_set_abs_params);
+  REGISTER_SYMBOL(input_set_capability);
+
+  // cfg80211/mac80211 WiFi subsystem
+  REGISTER_SYMBOL(wiphy_new);
+  REGISTER_SYMBOL(wiphy_new_nm);
+  REGISTER_SYMBOL(wiphy_register);
+  REGISTER_SYMBOL(wiphy_unregister);
+  REGISTER_SYMBOL(wiphy_free);
+  REGISTER_SYMBOL(ieee80211_alloc_hw);
+  REGISTER_SYMBOL(ieee80211_register_hw);
+  REGISTER_SYMBOL(ieee80211_unregister_hw);
+  REGISTER_SYMBOL(ieee80211_free_hw);
+  REGISTER_SYMBOL(cfg80211_scan_done);
+  REGISTER_SYMBOL(cfg80211_inform_bss_data);
+  REGISTER_SYMBOL(cfg80211_connect_result);
+  REGISTER_SYMBOL(cfg80211_disconnected);
+  REGISTER_SYMBOL(ieee80211_rx);
+  REGISTER_SYMBOL(ieee80211_rx_irqsafe);
+  REGISTER_SYMBOL(ieee80211_tx_status);
+  REGISTER_SYMBOL(ieee80211_tx_status_irqsafe);
+  REGISTER_SYMBOL(regulatory_hint);
+  REGISTER_SYMBOL(alloc_netdev);
+  REGISTER_SYMBOL(free_netdev);
+  REGISTER_SYMBOL(register_netdev);
+  REGISTER_SYMBOL(unregister_netdev);
 
   fprintf(stderr, "driverhub: registered %zu KMI symbols\n", symbols_.size());
 }

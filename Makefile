@@ -29,7 +29,10 @@ LIB_SRCS := \
 	src/shim/subsystem/i2c.cc \
 	src/shim/subsystem/spi.cc \
 	src/shim/subsystem/gpio.cc \
-	src/shim/subsystem/usb.cc
+	src/shim/subsystem/usb.cc \
+	src/shim/subsystem/drm.cc \
+	src/shim/subsystem/input.cc \
+	src/shim/subsystem/cfg80211.cc
 
 SRCS := src/main.cc $(LIB_SRCS)
 OBJS := $(SRCS:.cc=.o)
@@ -65,7 +68,10 @@ GKI_SRCS := \
 	src/shim/subsystem/i2c.cc \
 	src/shim/subsystem/spi.cc \
 	src/shim/subsystem/gpio.cc \
-	src/shim/subsystem/usb.cc
+	src/shim/subsystem/usb.cc \
+	src/shim/subsystem/drm.cc \
+	src/shim/subsystem/input.cc \
+	src/shim/subsystem/cfg80211.cc
 
 GKI_OBJS := $(GKI_SRCS:.cc=.gki.o)
 GKI_TARGET := driverhub-gki
