@@ -15,7 +15,7 @@
 #include "src/shim/kernel/sync.h"
 #include "src/shim/kernel/time.h"
 
-// Forward declarations for RTC and timer shim symbols.
+// Forward declarations for RTC, timer, and ABI-compat shim symbols.
 extern "C" {
 // rtc.h
 struct rtc_device;
@@ -23,6 +23,7 @@ struct rtc_time;
 struct rtc_wkalrm;
 struct rtc_device *devm_rtc_allocate_device(struct device *parent);
 int devm_rtc_register_device(struct rtc_device *rtc);
+int __devm_rtc_register_device(void *owner, struct rtc_device *rtc);
 void rtc_update_irq(struct rtc_device *rtc, unsigned long num,
                     unsigned long events);
 void rtc_time64_to_tm(int64_t time, struct rtc_time *tm);
@@ -34,11 +35,15 @@ struct timer_list;
 void add_timer(struct timer_list *timer);
 int del_timer(struct timer_list *timer);
 int mod_timer(struct timer_list *timer, unsigned long expires);
+void init_timer_key(struct timer_list *timer,
+                    void (*func)(struct timer_list *),
+                    unsigned int flags, const char *name, void *key);
 
-// platform_device_del (used by rtc-test error path)
+// platform extras
+struct platform_driver;
 void platform_device_del(struct platform_device *pdev);
-
-// device_init_wakeup is inline in the header, doesn't need registration.
+int __platform_driver_register(struct platform_driver *drv, void *owner);
+int device_init_wakeup(struct device *dev, int enable);
 }
 
 namespace driverhub {
@@ -150,8 +155,17 @@ void SymbolRegistry::RegisterKmiSymbols() {
       reinterpret_cast<uintptr_t>(&del_timer)));
   REGISTER_SYMBOL(mod_timer);
 
-  // Platform extras
+  // Platform extras (GKI .ko uses __ prefixed versions)
   REGISTER_SYMBOL(platform_device_del);
+  REGISTER_SYMBOL(__platform_driver_register);
+  REGISTER_SYMBOL(device_init_wakeup);
+
+  // RTC — GKI .ko uses __devm_rtc_register_device (the non-underscore
+  // version is a static inline wrapper in the kernel header).
+  REGISTER_SYMBOL(__devm_rtc_register_device);
+
+  // Timer — GKI .ko calls init_timer_key (invoked by timer_setup macro).
+  REGISTER_SYMBOL(init_timer_key);
 
   // Jiffies (variable, not function)
   Register("jiffies", reinterpret_cast<void*>(
