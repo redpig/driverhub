@@ -119,6 +119,18 @@ void platform_device_put(struct platform_device* pdev) {
   free(pdev);
 }
 
+void platform_device_del(struct platform_device* pdev) {
+  fprintf(stderr, "driverhub: platform_device_del(%s.%d)\n",
+          pdev->name ? pdev->name : "(null)", pdev->id);
+  auto& registry = device_registry();
+  for (auto it = registry.begin(); it != registry.end(); ++it) {
+    if (*it == pdev) {
+      registry.erase(it);
+      break;
+    }
+  }
+}
+
 void platform_device_unregister(struct platform_device* pdev) {
   fprintf(stderr, "driverhub: platform_device_unregister(%s.%d)\n",
           pdev->name ? pdev->name : "(null)", pdev->id);

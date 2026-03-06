@@ -15,6 +15,32 @@
 #include "src/shim/kernel/sync.h"
 #include "src/shim/kernel/time.h"
 
+// Forward declarations for RTC and timer shim symbols.
+extern "C" {
+// rtc.h
+struct rtc_device;
+struct rtc_time;
+struct rtc_wkalrm;
+struct rtc_device *devm_rtc_allocate_device(struct device *parent);
+int devm_rtc_register_device(struct rtc_device *rtc);
+void rtc_update_irq(struct rtc_device *rtc, unsigned long num,
+                    unsigned long events);
+void rtc_time64_to_tm(int64_t time, struct rtc_time *tm);
+int64_t rtc_tm_to_time64(struct rtc_time *tm);
+int64_t ktime_get_real_seconds(void);
+
+// timer.h
+struct timer_list;
+void add_timer(struct timer_list *timer);
+int del_timer(struct timer_list *timer);
+int mod_timer(struct timer_list *timer, unsigned long expires);
+
+// platform_device_del (used by rtc-test error path)
+void platform_device_del(struct platform_device *pdev);
+
+// device_init_wakeup is inline in the header, doesn't need registration.
+}
+
 namespace driverhub {
 
 SymbolRegistry::SymbolRegistry() = default;
@@ -106,6 +132,31 @@ void SymbolRegistry::RegisterKmiSymbols() {
   REGISTER_SYMBOL(usleep_range);
   REGISTER_SYMBOL(ktime_get);
   REGISTER_SYMBOL(ktime_get_real);
+
+  // RTC subsystem
+  REGISTER_SYMBOL(devm_rtc_allocate_device);
+  REGISTER_SYMBOL(devm_rtc_register_device);
+  REGISTER_SYMBOL(rtc_update_irq);
+  REGISTER_SYMBOL(rtc_time64_to_tm);
+  REGISTER_SYMBOL(rtc_tm_to_time64);
+  REGISTER_SYMBOL(ktime_get_real_seconds);
+
+  // Timer
+  REGISTER_SYMBOL(add_timer);
+  REGISTER_SYMBOL(del_timer);
+  // timer_delete is a macro alias for del_timer in the module headers,
+  // but register both names in case a module references either.
+  Register("timer_delete", reinterpret_cast<void*>(
+      reinterpret_cast<uintptr_t>(&del_timer)));
+  REGISTER_SYMBOL(mod_timer);
+
+  // Platform extras
+  REGISTER_SYMBOL(platform_device_del);
+
+  // Jiffies (variable, not function)
+  Register("jiffies", reinterpret_cast<void*>(
+      reinterpret_cast<uintptr_t>(const_cast<volatile unsigned long*>(
+          &jiffies))));
 
   fprintf(stderr, "driverhub: registered %zu KMI symbols\n", symbols_.size());
 }

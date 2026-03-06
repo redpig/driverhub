@@ -51,6 +51,7 @@ void platform_driver_unregister(struct platform_driver* drv);
 
 struct platform_device* platform_device_alloc(const char* name, int id);
 int platform_device_add(struct platform_device* pdev);
+void platform_device_del(struct platform_device* pdev);
 void platform_device_put(struct platform_device* pdev);
 void platform_device_unregister(struct platform_device* pdev);
 

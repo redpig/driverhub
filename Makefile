@@ -2,7 +2,7 @@
 # The real Fuchsia build uses BUILD.gn.
 
 CXX ?= g++
-CXXFLAGS := -std=c++17 -Wall -Wextra -Wpedantic -g -I. -fno-pie
+CXXFLAGS := -std=c++17 -Wall -Wextra -Wpedantic -g -I. -Isrc/shim/include -fno-pie
 LDFLAGS := -no-pie
 
 SRCS := \
@@ -17,23 +17,33 @@ SRCS := \
 	src/shim/kernel/module.cc \
 	src/shim/kernel/device.cc \
 	src/shim/kernel/platform.cc \
-	src/shim/kernel/time.cc
+	src/shim/kernel/time.cc \
+	src/shim/kernel/timer.cc \
+	src/shim/subsystem/rtc.cc
 
 OBJS := $(SRCS:.cc=.o)
 TARGET := driverhub
 
 CC ?= gcc
+SHIM_INCLUDES := -Isrc/shim/include
 TEST_KO := tests/test_module.ko
+RTC_TEST_KO := third_party/linux/rtc-test/rtc-test.ko
 
-.PHONY: all clean test
+.PHONY: all clean test test-rtc
 
 all: $(TARGET)
 
 test: $(TARGET) $(TEST_KO)
 	echo | ./$(TARGET) $(TEST_KO)
 
+test-rtc: $(TARGET) $(RTC_TEST_KO)
+	echo | ./$(TARGET) $(RTC_TEST_KO)
+
 $(TEST_KO): tests/test_module.c
 	$(CC) -c -o $@ $< -fno-stack-protector -fno-pie
+
+$(RTC_TEST_KO): third_party/linux/rtc-test/rtc-test.c
+	$(CC) -c -o $@ $< $(SHIM_INCLUDES) -fno-stack-protector -fno-pie
 
 $(TARGET): $(OBJS)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ -lpthread
@@ -42,4 +52,4 @@ $(TARGET): $(OBJS)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -f $(OBJS) $(TARGET) $(TEST_KO) $(RTC_TEST_KO)
