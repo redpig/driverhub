@@ -39,4 +39,14 @@ int mod_timer(struct timer_list *timer, unsigned long expires) {
   return was_active;
 }
 
+// init_timer_key — called by the timer_setup() macro in real .ko modules.
+void init_timer_key(struct timer_list *timer, void (*func)(struct timer_list *),
+                    unsigned int flags, const char * /*name*/,
+                    void * /*key*/) {
+  timer->function = func;
+  timer->flags = flags;
+  timer->_active = 0;
+  timer->expires = 0;
+}
+
 }  // extern "C"

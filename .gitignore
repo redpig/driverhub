@@ -3,6 +3,7 @@
 *.ko
 driverhub
 driverhub-gki
+tests/rtc_ops_test
 
 # Editor files
 *.swp

@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <vector>
 
 // We define the structs directly here to avoid header conflicts between
 // our linux/ shim headers and the system C++ headers (POSIX timer_delete).
@@ -54,6 +55,12 @@ struct rtc_device {
   int id;
 };
 
+// Registry of all registered RTC devices, for test harness queries.
+static std::vector<struct rtc_device *> &rtc_registry() {
+  static std::vector<struct rtc_device *> registry;
+  return registry;
+}
+
 extern "C" {
 
 static int rtc_id_counter = 0;
@@ -85,7 +92,12 @@ int devm_rtc_register_device(struct rtc_device *rtc) {
           rtc->ops->set_alarm
               ? reinterpret_cast<void *>(rtc->ops->set_alarm)
               : nullptr);
+  rtc_registry().push_back(rtc);
   return 0;
+}
+
+int __devm_rtc_register_device(void * /*owner*/, struct rtc_device *rtc) {
+  return devm_rtc_register_device(rtc);
 }
 
 void rtc_update_irq(struct rtc_device *rtc, unsigned long num,
@@ -127,6 +139,18 @@ int64_t ktime_get_real_seconds(void) {
   struct timespec ts;
   clock_gettime(CLOCK_REALTIME, &ts);
   return static_cast<int64_t>(ts.tv_sec);
+}
+
+// Query API for test harnesses — returns the Nth registered RTC device.
+struct rtc_device *driverhub_rtc_get_device(int index) {
+  auto &reg = rtc_registry();
+  if (index < 0 || static_cast<size_t>(index) >= reg.size())
+    return nullptr;
+  return reg[static_cast<size_t>(index)];
+}
+
+int driverhub_rtc_device_count(void) {
+  return static_cast<int>(rtc_registry().size());
 }
 
 }  // extern "C"

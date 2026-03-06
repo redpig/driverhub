@@ -370,6 +370,22 @@ std::unique_ptr<LoadedModule> ModuleLoader::Load(std::string_view name,
     }
   }
 
+  // Run constructors from .init_array / .ctors sections.
+  // EXPORT_SYMBOL uses __attribute__((constructor)) which places function
+  // pointers in .init_array.  These must run before init_module so that
+  // exported symbols are registered.
+  for (uint16_t i = 0; i < shnum; i++) {
+    if (sections[i].name == ".init_array" && sections[i].base) {
+      size_t count = sections[i].size / sizeof(void (*)());
+      auto** ctors = reinterpret_cast<void (**)()>(sections[i].base);
+      for (size_t c = 0; c < count; c++) {
+        if (ctors[c]) {
+          ctors[c]();
+        }
+      }
+    }
+  }
+
   // Build result.
   auto module = std::make_unique<LoadedModule>();
   module->name = std::string(name);

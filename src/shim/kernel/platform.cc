@@ -165,4 +165,16 @@ int platform_get_irq(struct platform_device* pdev, unsigned int num) {
   return (int)r->start;
 }
 
+// __platform_driver_register — the macro-generated form that real .ko modules
+// call.  In the standard (non-ABI) build this just delegates to the
+// simplified platform_driver_register above.
+int __platform_driver_register(struct platform_driver* drv, void* /*owner*/) {
+  return platform_driver_register(drv);
+}
+
+// device_init_wakeup — no-op in userspace.
+int device_init_wakeup(struct device* /*dev*/, int /*enable*/) {
+  return 0;
+}
+
 }  // extern "C"

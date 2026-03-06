@@ -5,8 +5,8 @@ CXX ?= g++
 CXXFLAGS := -std=c++17 -Wall -Wextra -Wpedantic -g -I. -Isrc/shim/include -fno-pie
 LDFLAGS := -no-pie
 
-SRCS := \
-	src/main.cc \
+# Core library sources (everything except main.cc).
+LIB_SRCS := \
 	src/bus_driver/bus_driver.cc \
 	src/module_node/module_node.cc \
 	src/loader/module_loader.cc \
@@ -21,7 +21,9 @@ SRCS := \
 	src/shim/kernel/timer.cc \
 	src/shim/subsystem/rtc.cc
 
+SRCS := src/main.cc $(LIB_SRCS)
 OBJS := $(SRCS:.cc=.o)
+LIB_OBJS := $(LIB_SRCS:.cc=.o)
 TARGET := driverhub
 
 # GKI ABI-compatible build — replaces small-struct shims with ABI shims.
@@ -53,8 +55,12 @@ SHIM_INCLUDES := -Isrc/shim/include
 TEST_KO := tests/test_module.ko
 RTC_TEST_KO := third_party/linux/rtc-test/rtc-test.ko
 GKI_KO := third_party/linux/rtc-test/rtc-test-gki.ko
+EXPORT_KO := tests/export_module.ko
+IMPORT_KO := tests/import_module.ko
+GPIO_KO := tests/gpio_test_module.ko
+RTC_OPS_TEST := tests/rtc_ops_test
 
-.PHONY: all clean test test-rtc test-gki
+.PHONY: all clean test test-rtc test-gki test-rtc-ops test-intermodule test-gpio test-all
 
 all: $(TARGET) $(GKI_TARGET)
 
@@ -67,11 +73,36 @@ test-rtc: $(TARGET) $(RTC_TEST_KO)
 test-gki: $(GKI_TARGET)
 	echo | ./$(GKI_TARGET) $(GKI_KO)
 
+test-rtc-ops: $(RTC_OPS_TEST) $(RTC_TEST_KO)
+	./$(RTC_OPS_TEST) $(RTC_TEST_KO)
+
+test-intermodule: $(TARGET) $(EXPORT_KO) $(IMPORT_KO)
+	echo | ./$(TARGET) $(EXPORT_KO) $(IMPORT_KO)
+
+test-gpio: $(TARGET) $(GPIO_KO)
+	echo | ./$(TARGET) $(GPIO_KO)
+
+test-all: test test-rtc test-rtc-ops test-intermodule test-gpio test-gki
+	@echo ""
+	@echo "=== All tests passed ==="
+
 $(TEST_KO): tests/test_module.c
 	$(CC) -c -o $@ $< -fno-stack-protector -fno-pie
 
 $(RTC_TEST_KO): third_party/linux/rtc-test/rtc-test.c
 	$(CC) -c -o $@ $< $(SHIM_INCLUDES) -fno-stack-protector -fno-pie
+
+$(EXPORT_KO): tests/export_module.c
+	$(CC) -c -o $@ $< $(SHIM_INCLUDES) -fno-stack-protector -fno-pie
+
+$(IMPORT_KO): tests/import_module.c
+	$(CC) -c -o $@ $< $(SHIM_INCLUDES) -fno-stack-protector -fno-pie
+
+$(GPIO_KO): tests/gpio_test_module.c
+	$(CC) -c -o $@ $< $(SHIM_INCLUDES) -fno-stack-protector -fno-pie
+
+$(RTC_OPS_TEST): tests/rtc_ops_test.cc $(LIB_OBJS)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ -lpthread
 
 $(TARGET): $(OBJS)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ -lpthread
@@ -86,4 +117,6 @@ $(GKI_TARGET): $(GKI_OBJS)
 	$(CXX) $(GKI_CXXFLAGS) -c -o $@ $<
 
 clean:
-	rm -f $(OBJS) $(GKI_OBJS) $(TARGET) $(GKI_TARGET) $(TEST_KO) $(RTC_TEST_KO)
+	rm -f $(OBJS) $(GKI_OBJS) $(LIB_OBJS) $(TARGET) $(GKI_TARGET) \
+		$(TEST_KO) $(RTC_TEST_KO) $(EXPORT_KO) $(IMPORT_KO) $(GPIO_KO) \
+		$(RTC_OPS_TEST)
