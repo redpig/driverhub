@@ -5,8 +5,6 @@
 #include "src/module_node/module_node.h"
 
 #include <cstdio>
-#include <cstring>
-#include <sys/mman.h>
 
 namespace driverhub {
 
@@ -17,18 +15,8 @@ ModuleNode::~ModuleNode() {
   if (bound_) {
     Unbind();
   }
-
-  // Free the mmap'd memory that backs the loaded module sections.
-  if (module_ && module_->text.size() >= sizeof(uintptr_t) + sizeof(size_t)) {
-    uintptr_t base;
-    size_t alloc_size;
-    memcpy(&base, module_->text.data(), sizeof(uintptr_t));
-    memcpy(&alloc_size, module_->text.data() + sizeof(uintptr_t),
-           sizeof(size_t));
-    if (base && alloc_size) {
-      munmap(reinterpret_cast<void*>(base), alloc_size);
-    }
-  }
+  // The module's MemoryAllocation is automatically released via its
+  // unique_ptr destructor when the LoadedModule is destroyed.
 }
 
 zx_status_t ModuleNode::Bind() {

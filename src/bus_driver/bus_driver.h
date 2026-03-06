@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "src/loader/memory_allocator.h"
 #include "src/loader/module_loader.h"
 #include "src/shim/kernel/types.h"
 #include "src/symbols/symbol_registry.h"
@@ -39,6 +40,10 @@ class BusDriver {
   // Load a .ko module from a file path.
   zx_status_t LoadModuleFromFile(const std::string& path);
 
+  // Load all .ko modules from a directory, resolving dependencies
+  // via topological sort before loading in order.
+  zx_status_t LoadModulesFromDirectory(const std::string& dir_path);
+
   size_t module_count() const { return nodes_.size(); }
 
  private:
@@ -47,6 +52,7 @@ class BusDriver {
   zx_status_t CreateModuleNode(std::unique_ptr<LoadedModule> module);
 
   SymbolRegistry symbols_;
+  std::unique_ptr<MemoryAllocator> allocator_;
   ModuleLoader loader_;
   std::vector<std::unique_ptr<ModuleNode>> nodes_;
 };

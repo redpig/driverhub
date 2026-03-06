@@ -9,10 +9,10 @@
 #include <elf.h>
 #include <memory>
 #include <string>
-#include <sys/mman.h>
 #include <unordered_map>
 #include <vector>
 
+#include "src/loader/memory_allocator.h"
 #include "src/symbols/symbol_registry.h"
 
 // ELF ET_REL loader for Linux .ko kernel modules.
@@ -87,7 +87,8 @@ struct LoadedSection {
 
 }  // namespace
 
-ModuleLoader::ModuleLoader(SymbolRegistry& symbols) : symbols_(symbols) {}
+ModuleLoader::ModuleLoader(SymbolRegistry& symbols, MemoryAllocator& allocator)
+    : symbols_(symbols), allocator_(allocator) {}
 ModuleLoader::~ModuleLoader() = default;
 
 std::unique_ptr<LoadedModule> ModuleLoader::Load(std::string_view name,
@@ -161,23 +162,15 @@ std::unique_ptr<LoadedModule> ModuleLoader::Load(std::string_view name,
     }
   }
 
-  // Allocate RWX memory for all loadable sections.
-  // In a real Fuchsia implementation, we'd use separate VMOs with appropriate
-  // permissions (RX for .text, RW for .data, R for .rodata).
-  int mmap_flags = MAP_PRIVATE | MAP_ANONYMOUS;
-#if defined(__x86_64__) && defined(MAP_32BIT)
-  // Use MAP_32BIT on x86_64 to keep allocations in the low 2GB, which is
-  // required for R_X86_64_32 relocations in kernel modules.
-  mmap_flags |= MAP_32BIT;
-#endif
-  uint8_t* alloc_base = static_cast<uint8_t*>(
-      mmap(nullptr, total_alloc, PROT_READ | PROT_WRITE | PROT_EXEC,
-           mmap_flags, -1, 0));
-  if (alloc_base == MAP_FAILED) {
-    fprintf(stderr, "driverhub: %.*s: mmap failed for %zu bytes\n",
+  // Allocate RWX memory for all loadable sections via the platform allocator.
+  // On host this uses mmap; on Fuchsia this uses VMOs.
+  auto* alloc = allocator_.Allocate(total_alloc);
+  if (!alloc) {
+    fprintf(stderr, "driverhub: %.*s: memory allocation failed for %zu bytes\n",
             (int)name.size(), name.data(), total_alloc);
     return nullptr;
   }
+  uint8_t* alloc_base = alloc->base;
 
   // Second pass: copy section data into the allocated region.
   size_t offset = 0;
@@ -220,7 +213,8 @@ std::unique_ptr<LoadedModule> ModuleLoader::Load(std::string_view name,
   if (!symtab || !strtab) {
     fprintf(stderr, "driverhub: %.*s: no symbol table found\n",
             (int)name.size(), name.data());
-    munmap(alloc_base, total_alloc);
+    alloc->Release();
+    delete alloc;
     return nullptr;
   }
 
@@ -410,11 +404,8 @@ std::unique_ptr<LoadedModule> ModuleLoader::Load(std::string_view name,
     }
   }
 
-  // Store the allocated memory in the text vector so it's tracked.
-  // The module owns this allocation; on destruction, it should be munmap'd.
-  module->text.resize(sizeof(uintptr_t) + sizeof(size_t));
-  memcpy(module->text.data(), &alloc_base, sizeof(uintptr_t));
-  memcpy(module->text.data() + sizeof(uintptr_t), &total_alloc, sizeof(size_t));
+  // Transfer ownership of the allocation to the module.
+  module->allocation.reset(alloc);
 
   fprintf(stderr,
           "driverhub: loaded %.*s (%zu bytes, %zu symbols, init=%p, exit=%p)\n",

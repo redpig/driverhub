@@ -5,6 +5,7 @@
 #ifndef DRIVERHUB_SRC_FUCHSIA_MODULE_ENUMERATOR_H_
 #define DRIVERHUB_SRC_FUCHSIA_MODULE_ENUMERATOR_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 

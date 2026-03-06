@@ -12,14 +12,38 @@
 #include <unordered_map>
 #include <vector>
 
+#include "src/fuchsia/module_enumerator.h"
+#include "src/loader/dependency_sort.h"
+#include "src/loader/memory_allocator.h"
 #include "src/module_node/module_node.h"
+
+// Platform-specific allocator selection.
+#if defined(__Fuchsia__)
+#include "src/fuchsia/vmo_module_loader.h"
+#else
+#include "src/loader/mmap_allocator.h"
+#endif
 
 namespace driverhub {
 
 // Forward declaration — drains EXPORT_SYMBOL calls from module.cc.
 std::unordered_map<std::string, void*> DrainPendingExports();
 
-BusDriver::BusDriver() : loader_(symbols_) {}
+namespace {
+
+std::unique_ptr<MemoryAllocator> CreatePlatformAllocator() {
+#if defined(__Fuchsia__)
+  return std::make_unique<VmoAllocator>();
+#else
+  return std::make_unique<MmapAllocator>();
+#endif
+}
+
+}  // namespace
+
+BusDriver::BusDriver()
+    : allocator_(CreatePlatformAllocator()),
+      loader_(symbols_, *allocator_) {}
 
 BusDriver::~BusDriver() {
   Shutdown();
@@ -88,6 +112,60 @@ zx_status_t BusDriver::LoadModuleFromFile(const std::string& path) {
   }
 
   return LoadModule(name, data.data(), data.size());
+}
+
+zx_status_t BusDriver::LoadModulesFromDirectory(const std::string& dir_path) {
+  // Step 1: Enumerate all .ko files in the directory.
+  auto entries = ModuleEnumerator::EnumerateFromDirectory(dir_path);
+  if (entries.empty()) {
+    fprintf(stderr, "driverhub: no modules found in %s\n", dir_path.c_str());
+    return -1;
+  }
+  fprintf(stderr, "driverhub: enumerated %zu modules from %s\n",
+          entries.size(), dir_path.c_str());
+
+  // Step 2: Extract modinfo from each module to build dependency graph.
+  // We do a lightweight parse of each .ko to get its ModuleInfo without
+  // fully loading it yet.
+  std::vector<std::pair<std::string, ModuleInfo>> module_infos;
+  for (const auto& entry : entries) {
+    ModuleInfo info;
+    info.name = entry.name;
+    // Quick-load just to extract metadata — the full load happens later.
+    auto loaded = loader_.Load(entry.name, entry.data.data(),
+                               entry.data.size());
+    if (loaded) {
+      info = loaded->info;
+    }
+    module_infos.push_back({entry.name, info});
+  }
+
+  // Step 3: Topologically sort by dependencies.
+  std::vector<size_t> load_order;
+  if (!TopologicalSortModules(module_infos, &load_order)) {
+    fprintf(stderr, "driverhub: dependency cycle detected, aborting\n");
+    return -1;
+  }
+
+  fprintf(stderr, "driverhub: load order determined for %zu modules\n",
+          load_order.size());
+
+  // Step 4: Load modules in dependency order.
+  int failures = 0;
+  for (size_t idx : load_order) {
+    const auto& entry = entries[idx];
+    zx_status_t status = LoadModule(entry.name, entry.data.data(),
+                                    entry.data.size());
+    if (status != 0) {
+      fprintf(stderr, "driverhub: failed to load %s (continuing)\n",
+              entry.name.c_str());
+      failures++;
+    }
+  }
+
+  fprintf(stderr, "driverhub: loaded %zu/%zu modules (%d failures)\n",
+          load_order.size() - failures, load_order.size(), failures);
+  return failures > 0 ? -1 : 0;
 }
 
 zx_status_t BusDriver::CreateModuleNode(

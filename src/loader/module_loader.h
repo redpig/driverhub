@@ -11,6 +11,8 @@
 #include <string_view>
 #include <vector>
 
+#include "src/loader/memory_allocator.h"
+
 namespace driverhub {
 
 // Metadata extracted from a .ko module's .modinfo section.
@@ -34,11 +36,9 @@ struct LoadedModule {
   int (*init_fn)() = nullptr;
   void (*exit_fn)() = nullptr;
 
-  // Owned memory backing the loaded module sections.
-  std::vector<uint8_t> text;
-  std::vector<uint8_t> data;
-  std::vector<uint8_t> rodata;
-  std::vector<uint8_t> bss;
+  // Owned memory allocation backing the loaded module sections.
+  // Automatically released when the LoadedModule is destroyed.
+  std::unique_ptr<MemoryAllocation> allocation;
 };
 
 class SymbolRegistry;
@@ -47,7 +47,10 @@ class SymbolRegistry;
 // symbols against the KMI shim library and intermodule symbol registry.
 class ModuleLoader {
  public:
-  explicit ModuleLoader(SymbolRegistry& symbols);
+  // Takes a symbol registry for resolving KMI symbols and a memory allocator
+  // for section memory. The allocator determines the backend: mmap on host,
+  // VMO on Fuchsia.
+  ModuleLoader(SymbolRegistry& symbols, MemoryAllocator& allocator);
   ~ModuleLoader();
 
   // Load a .ko module from raw ELF bytes. Resolves symbols, applies
@@ -58,6 +61,7 @@ class ModuleLoader {
 
  private:
   SymbolRegistry& symbols_;
+  MemoryAllocator& allocator_;
 };
 
 }  // namespace driverhub
