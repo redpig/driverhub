@@ -1,0 +1,119 @@
+# Copyright 2024 The DriverHub Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/bind/bind.gni")
+import("//build/components.gni")
+import("//build/drivers.gni")
+
+group("driverhub") {
+  deps = [
+    ":driverhub-component",
+    ":driverhub-tests",
+  ]
+}
+
+# Bind rules: match the driverhub bus driver to the platform device.
+driver_bind_rules("driverhub-bind") {
+  rules = "meta/driverhub.bind"
+  deps = [
+    "//src/devices/bind/fuchsia.platform",
+  ]
+}
+
+# Core static library shared between the driver and tests.
+source_set("driverhub-core") {
+  sources = [
+    "src/loader/module_loader.cc",
+    "src/module_node/module_node.cc",
+    "src/shim/kernel/device.cc",
+    "src/shim/kernel/memory.cc",
+    "src/shim/kernel/module.cc",
+    "src/shim/kernel/platform.cc",
+    "src/shim/kernel/print.cc",
+    "src/shim/kernel/sync.cc",
+    "src/shim/kernel/time.cc",
+    "src/shim/kernel/timer.cc",
+    "src/shim/subsystem/rtc.cc",
+    "src/symbols/symbol_registry.cc",
+  ]
+
+  public_deps = [
+    "//sdk/lib/driver/logging/cpp",
+    "//src/lib/elfldltl",
+    "//zircon/system/ulib/zx",
+  ]
+
+  include_dirs = [
+    ".",
+    "src/shim/include",
+  ]
+}
+
+# The DFv2 bus driver component.
+fuchsia_driver("driverhub-driver") {
+  output_name = "driverhub"
+
+  sources = [
+    "src/fuchsia/driverhub_driver.cc",
+    "src/fuchsia/driverhub_driver.h",
+    "src/fuchsia/module_child_node.cc",
+    "src/fuchsia/module_child_node.h",
+  ]
+
+  deps = [
+    ":driverhub-bind",
+    ":driverhub-core",
+    "//sdk/fidl/fuchsia.driver.framework:fuchsia.driver.framework_cpp",
+    "//sdk/fidl/fuchsia.hardware.gpio:fuchsia.hardware.gpio_cpp",
+    "//sdk/fidl/fuchsia.hardware.i2c:fuchsia.hardware.i2c_cpp",
+    "//sdk/fidl/fuchsia.hardware.platform.device:fuchsia.hardware.platform.device_cpp",
+    "//sdk/lib/driver/component/cpp",
+    "//sdk/lib/driver/incoming/cpp",
+    "//sdk/lib/driver/outgoing/cpp",
+    "//src/lib/elfldltl",
+  ]
+
+  include_dirs = [
+    ".",
+    "src/shim/include",
+  ]
+}
+
+fuchsia_driver_component("driverhub-component") {
+  component_name = "driverhub"
+  manifest = "meta/driverhub.cml"
+  deps = [ ":driverhub-driver" ]
+  info = "meta/driverhub-info.json"
+}
+
+# Unit tests.
+fuchsia_unittest_package("driverhub-tests") {
+  deps = [ ":driverhub-unittests" ]
+}
+
+fuchsia_test_component("driverhub-unittests") {
+  manifest = "meta/driverhub-tests.cml"
+  deps = [ ":driverhub-test-bin" ]
+}
+
+executable("driverhub-test-bin") {
+  testonly = true
+  output_name = "driverhub-tests"
+
+  sources = [
+    "tests/loader_test.cc",
+    "tests/symbol_registry_test.cc",
+  ]
+
+  deps = [
+    ":driverhub-core",
+    "//src/lib/fxl/test:gtest_main",
+    "//third_party/googletest:gtest",
+  ]
+
+  include_dirs = [
+    ".",
+    "src/shim/include",
+  ]
+}

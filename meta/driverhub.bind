@@ -1,0 +1,10 @@
+// Copyright 2024 The DriverHub Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+// Bind rules for the DriverHub bus driver.
+// Matches against a platform device with the driverhub device ID.
+
+using fuchsia.platform;
+
+fuchsia.platform.DRIVER_FRAMEWORK_VERSION == 2;

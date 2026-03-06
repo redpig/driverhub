@@ -11,5 +11,9 @@ tests/rtc_ops_test
 .vscode/
 .idea/
 
+# Downloaded third-party SDKs (large, fetched at build time)
+third_party/fuchsia-idk/
+third_party/elfldltl/
+
 # OS files
 .DS_Store

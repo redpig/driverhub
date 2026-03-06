@@ -1,0 +1,9 @@
+{
+  "short_description": "DriverHub: GKI kernel module compatibility layer for Fuchsia",
+  "manufacturer": "",
+  "families": [],
+  "models": [],
+  "areas": [
+    "Drivers"
+  ]
+}
