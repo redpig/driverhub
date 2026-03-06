@@ -6,6 +6,7 @@
 #define DRIVERHUB_SRC_LOADER_MODULE_LOADER_H_
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>

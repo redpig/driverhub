@@ -1,0 +1,115 @@
+// Copyright 2024 The DriverHub Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "src/symbols/symbol_registry.h"
+
+#include <cstdint>
+#include <cstdio>
+
+#include "src/shim/kernel/device.h"
+#include "src/shim/kernel/memory.h"
+#include "src/shim/kernel/module.h"
+#include "src/shim/kernel/platform.h"
+#include "src/shim/kernel/print.h"
+#include "src/shim/kernel/sync.h"
+#include "src/shim/kernel/time.h"
+
+namespace driverhub {
+
+SymbolRegistry::SymbolRegistry() = default;
+SymbolRegistry::~SymbolRegistry() = default;
+
+void SymbolRegistry::Register(const std::string& name, void* address) {
+  symbols_[name] = address;
+}
+
+void* SymbolRegistry::Resolve(std::string_view name) const {
+  auto it = symbols_.find(std::string(name));
+  if (it != symbols_.end()) {
+    return it->second;
+  }
+  return nullptr;
+}
+
+bool SymbolRegistry::Contains(std::string_view name) const {
+  return symbols_.find(std::string(name)) != symbols_.end();
+}
+
+// Macro to reduce boilerplate when registering shim symbols.
+#define REGISTER_SYMBOL(sym) \
+  Register(#sym, reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(&sym)))
+
+void SymbolRegistry::RegisterKmiSymbols() {
+  // Memory allocation
+  REGISTER_SYMBOL(kmalloc);
+  REGISTER_SYMBOL(kzalloc);
+  REGISTER_SYMBOL(krealloc);
+  REGISTER_SYMBOL(kcalloc);
+  REGISTER_SYMBOL(kfree);
+  REGISTER_SYMBOL(vmalloc);
+  REGISTER_SYMBOL(vzalloc);
+  REGISTER_SYMBOL(vfree);
+
+  // Logging
+  REGISTER_SYMBOL(printk);
+  REGISTER_SYMBOL(dev_err);
+  REGISTER_SYMBOL(dev_warn);
+  REGISTER_SYMBOL(dev_info);
+  REGISTER_SYMBOL(dev_dbg);
+
+  // Synchronization — mutex
+  REGISTER_SYMBOL(mutex_init);
+  REGISTER_SYMBOL(mutex_destroy);
+  REGISTER_SYMBOL(mutex_lock);
+  REGISTER_SYMBOL(mutex_unlock);
+  REGISTER_SYMBOL(mutex_trylock);
+
+  // Synchronization — spinlock
+  REGISTER_SYMBOL(spin_lock_init);
+  REGISTER_SYMBOL(spin_lock);
+  REGISTER_SYMBOL(spin_unlock);
+  REGISTER_SYMBOL(spin_lock_irqsave);
+  REGISTER_SYMBOL(spin_unlock_irqrestore);
+
+  // Synchronization — wait queues
+  REGISTER_SYMBOL(init_waitqueue_head);
+  REGISTER_SYMBOL(wake_up);
+  REGISTER_SYMBOL(wake_up_all);
+
+  // Synchronization — completion
+  REGISTER_SYMBOL(init_completion);
+  REGISTER_SYMBOL(complete);
+  REGISTER_SYMBOL(wait_for_completion);
+  REGISTER_SYMBOL(wait_for_completion_timeout);
+
+  // Module support
+  REGISTER_SYMBOL(__driverhub_export_symbol);
+
+  // Platform device
+  REGISTER_SYMBOL(platform_driver_register);
+  REGISTER_SYMBOL(platform_driver_unregister);
+  REGISTER_SYMBOL(platform_get_resource);
+  REGISTER_SYMBOL(platform_get_irq);
+  REGISTER_SYMBOL(platform_device_alloc);
+  REGISTER_SYMBOL(platform_device_add);
+  REGISTER_SYMBOL(platform_device_put);
+  REGISTER_SYMBOL(platform_device_unregister);
+
+  // Device-managed allocation
+  REGISTER_SYMBOL(devm_kmalloc);
+  REGISTER_SYMBOL(devm_kzalloc);
+
+  // Time
+  REGISTER_SYMBOL(msecs_to_jiffies);
+  REGISTER_SYMBOL(msleep);
+  REGISTER_SYMBOL(usleep_range);
+  REGISTER_SYMBOL(ktime_get);
+  REGISTER_SYMBOL(ktime_get_real);
+
+  fprintf(stderr, "driverhub: registered %zu KMI symbols\n", symbols_.size());
+}
+
+#undef REGISTER_SYMBOL
+
+}  // namespace driverhub

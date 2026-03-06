@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "src/loader/module_loader.h"
+#include "src/shim/kernel/types.h"
 
 namespace driverhub {
 

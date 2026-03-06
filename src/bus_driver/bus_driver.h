@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "src/loader/module_loader.h"
+#include "src/shim/kernel/types.h"
 #include "src/symbols/symbol_registry.h"
 
 namespace driverhub {
@@ -31,9 +32,16 @@ class BusDriver {
   // Shut down all modules and release resources.
   void Shutdown();
 
+  // Load a .ko module from raw ELF bytes.
+  zx_status_t LoadModule(const std::string& name,
+                          const uint8_t* data, size_t size);
+
+  // Load a .ko module from a file path.
+  zx_status_t LoadModuleFromFile(const std::string& path);
+
+  size_t module_count() const { return nodes_.size(); }
+
  private:
-  // Load modules described in the device tree in topological dependency order.
-  zx_status_t LoadModulesFromDeviceTree();
 
   // Create a DFv2 child node for a loaded module.
   zx_status_t CreateModuleNode(std::unique_ptr<LoadedModule> module);

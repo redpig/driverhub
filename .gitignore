@@ -1,0 +1,13 @@
+# Build artifacts
+*.o
+*.ko
+driverhub
+
+# Editor files
+*.swp
+*~
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
