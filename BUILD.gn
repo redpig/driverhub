@@ -24,9 +24,14 @@ driver_bind_rules("driverhub-bind") {
 # Core static library shared between the driver and tests.
 source_set("driverhub-core") {
   sources = [
+    "src/dt/dt_provider.cc",
+    "src/loader/dependency_sort.cc",
     "src/loader/module_loader.cc",
     "src/module_node/module_node.cc",
+    "src/shim/kernel/bug.cc",
     "src/shim/kernel/device.cc",
+    "src/shim/kernel/io.cc",
+    "src/shim/kernel/irq.cc",
     "src/shim/kernel/memory.cc",
     "src/shim/kernel/module.cc",
     "src/shim/kernel/platform.cc",
@@ -34,7 +39,12 @@ source_set("driverhub-core") {
     "src/shim/kernel/sync.cc",
     "src/shim/kernel/time.cc",
     "src/shim/kernel/timer.cc",
+    "src/shim/kernel/workqueue.cc",
+    "src/shim/subsystem/gpio.cc",
+    "src/shim/subsystem/i2c.cc",
     "src/shim/subsystem/rtc.cc",
+    "src/shim/subsystem/spi.cc",
+    "src/shim/subsystem/usb.cc",
     "src/symbols/symbol_registry.cc",
   ]
 
@@ -59,6 +69,10 @@ fuchsia_driver("driverhub-driver") {
     "src/fuchsia/driverhub_driver.h",
     "src/fuchsia/module_child_node.cc",
     "src/fuchsia/module_child_node.h",
+    "src/fuchsia/module_enumerator.cc",
+    "src/fuchsia/module_enumerator.h",
+    "src/fuchsia/vmo_module_loader.cc",
+    "src/fuchsia/vmo_module_loader.h",
   ]
 
   deps = [
@@ -68,6 +82,7 @@ fuchsia_driver("driverhub-driver") {
     "//sdk/fidl/fuchsia.hardware.gpio:fuchsia.hardware.gpio_cpp",
     "//sdk/fidl/fuchsia.hardware.i2c:fuchsia.hardware.i2c_cpp",
     "//sdk/fidl/fuchsia.hardware.platform.device:fuchsia.hardware.platform.device_cpp",
+    "//sdk/fidl/fuchsia.hardware.spi:fuchsia.hardware.spi_cpp",
     "//sdk/lib/driver/component/cpp",
     "//sdk/lib/driver/incoming/cpp",
     "//sdk/lib/driver/outgoing/cpp",
@@ -102,6 +117,7 @@ executable("driverhub-test-bin") {
   output_name = "driverhub-tests"
 
   sources = [
+    "tests/dependency_sort_test.cc",
     "tests/loader_test.cc",
     "tests/symbol_registry_test.cc",
   ]

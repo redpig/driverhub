@@ -10,7 +10,9 @@ LIB_SRCS := \
 	src/bus_driver/bus_driver.cc \
 	src/module_node/module_node.cc \
 	src/loader/module_loader.cc \
+	src/loader/dependency_sort.cc \
 	src/symbols/symbol_registry.cc \
+	src/dt/dt_provider.cc \
 	src/shim/kernel/memory.cc \
 	src/shim/kernel/print.cc \
 	src/shim/kernel/sync.cc \
@@ -19,7 +21,15 @@ LIB_SRCS := \
 	src/shim/kernel/platform.cc \
 	src/shim/kernel/time.cc \
 	src/shim/kernel/timer.cc \
-	src/shim/subsystem/rtc.cc
+	src/shim/kernel/workqueue.cc \
+	src/shim/kernel/irq.cc \
+	src/shim/kernel/io.cc \
+	src/shim/kernel/bug.cc \
+	src/shim/subsystem/rtc.cc \
+	src/shim/subsystem/i2c.cc \
+	src/shim/subsystem/spi.cc \
+	src/shim/subsystem/gpio.cc \
+	src/shim/subsystem/usb.cc
 
 SRCS := src/main.cc $(LIB_SRCS)
 OBJS := $(SRCS:.cc=.o)
@@ -37,15 +47,25 @@ GKI_SRCS := \
 	src/bus_driver/bus_driver.cc \
 	src/module_node/module_node.cc \
 	src/loader/module_loader.cc \
+	src/loader/dependency_sort.cc \
 	src/symbols/symbol_registry.cc \
+	src/dt/dt_provider.cc \
 	src/shim/kernel/memory.cc \
 	src/shim/kernel/print.cc \
 	src/shim/kernel/sync.cc \
 	src/shim/kernel/module.cc \
 	src/shim/kernel/time.cc \
+	src/shim/kernel/workqueue.cc \
+	src/shim/kernel/irq.cc \
+	src/shim/kernel/io.cc \
+	src/shim/kernel/bug.cc \
 	src/shim/abi/platform_abi.cc \
 	src/shim/abi/rtc_abi.cc \
-	src/shim/abi/timer_abi.cc
+	src/shim/abi/timer_abi.cc \
+	src/shim/subsystem/i2c.cc \
+	src/shim/subsystem/spi.cc \
+	src/shim/subsystem/gpio.cc \
+	src/shim/subsystem/usb.cc
 
 GKI_OBJS := $(GKI_SRCS:.cc=.gki.o)
 GKI_TARGET := driverhub-gki
@@ -59,8 +79,9 @@ EXPORT_KO := tests/export_module.ko
 IMPORT_KO := tests/import_module.ko
 GPIO_KO := tests/gpio_test_module.ko
 RTC_OPS_TEST := tests/rtc_ops_test
+DEP_SORT_TEST := tests/dependency_sort_test
 
-.PHONY: all clean test test-rtc test-gki test-rtc-ops test-intermodule test-gpio test-all
+.PHONY: all clean test test-rtc test-gki test-rtc-ops test-intermodule test-gpio test-dep-sort test-all
 
 all: $(TARGET) $(GKI_TARGET)
 
@@ -82,7 +103,10 @@ test-intermodule: $(TARGET) $(EXPORT_KO) $(IMPORT_KO)
 test-gpio: $(TARGET) $(GPIO_KO)
 	echo | ./$(TARGET) $(GPIO_KO)
 
-test-all: test test-rtc test-rtc-ops test-intermodule test-gpio test-gki
+test-dep-sort: $(DEP_SORT_TEST)
+	./$(DEP_SORT_TEST)
+
+test-all: test test-rtc test-rtc-ops test-intermodule test-gpio test-dep-sort test-gki
 	@echo ""
 	@echo "=== All tests passed ==="
 
@@ -100,6 +124,9 @@ $(IMPORT_KO): tests/import_module.c
 
 $(GPIO_KO): tests/gpio_test_module.c
 	$(CC) -c -o $@ $< $(SHIM_INCLUDES) -fno-stack-protector -fno-pie
+
+$(DEP_SORT_TEST): tests/dependency_sort_test.cc src/loader/dependency_sort.o
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ -lpthread
 
 $(RTC_OPS_TEST): tests/rtc_ops_test.cc $(LIB_OBJS)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ -lpthread
@@ -119,4 +146,4 @@ $(GKI_TARGET): $(GKI_OBJS)
 clean:
 	rm -f $(OBJS) $(GKI_OBJS) $(LIB_OBJS) $(TARGET) $(GKI_TARGET) \
 		$(TEST_KO) $(RTC_TEST_KO) $(EXPORT_KO) $(IMPORT_KO) $(GPIO_KO) \
-		$(RTC_OPS_TEST)
+		$(RTC_OPS_TEST) $(DEP_SORT_TEST)

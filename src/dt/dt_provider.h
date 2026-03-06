@@ -16,6 +16,7 @@
 // to be loaded, with DT properties providing configuration to the module's
 // probe function.
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
