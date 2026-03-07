@@ -257,6 +257,65 @@ void outw(uint16_t val, uint16_t port) { (void)val; (void)port; }
 void outl(uint32_t val, uint16_t port) { (void)val; (void)port; }
 #endif
 
+// --- DMA streaming mappings ---
+// In userspace, DMA addresses are simply the virtual addresses. On Fuchsia,
+// these would go through zx_bti_pin for real IOMMU translation.
+
+dma_addr_t dma_map_single(struct device* dev, void* ptr, size_t size,
+                           enum dma_data_direction dir) {
+  (void)dev;
+  (void)size;
+  (void)dir;
+  return reinterpret_cast<dma_addr_t>(ptr);
+}
+
+void dma_unmap_single(struct device* dev, dma_addr_t addr, size_t size,
+                       enum dma_data_direction dir) {
+  (void)dev;
+  (void)addr;
+  (void)size;
+  (void)dir;
+}
+
+dma_addr_t dma_map_page(struct device* dev, void* page,
+                         unsigned long offset, size_t size,
+                         enum dma_data_direction dir) {
+  (void)dev;
+  (void)size;
+  (void)dir;
+  return reinterpret_cast<dma_addr_t>(static_cast<char*>(page) + offset);
+}
+
+void dma_unmap_page(struct device* dev, dma_addr_t addr, size_t size,
+                     enum dma_data_direction dir) {
+  (void)dev;
+  (void)addr;
+  (void)size;
+  (void)dir;
+}
+
+void dma_sync_single_for_cpu(struct device* dev, dma_addr_t addr,
+                              size_t size, enum dma_data_direction dir) {
+  (void)dev;
+  (void)addr;
+  (void)size;
+  (void)dir;
+  // No-op: userspace memory is always coherent.
+}
+
+void dma_sync_single_for_device(struct device* dev, dma_addr_t addr,
+                                 size_t size, enum dma_data_direction dir) {
+  (void)dev;
+  (void)addr;
+  (void)size;
+  (void)dir;
+}
+
+int dma_mapping_error(struct device* dev, dma_addr_t addr) {
+  (void)dev;
+  return addr == 0 ? 1 : 0;
+}
+
 // --- User-space copy ---
 
 unsigned long copy_from_user(void* to, const void* from, unsigned long n) {

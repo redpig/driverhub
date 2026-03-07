@@ -76,6 +76,29 @@ int dma_set_mask(struct device *dev, uint64_t mask);
 int dma_set_coherent_mask(struct device *dev, uint64_t mask);
 int dma_set_mask_and_coherent(struct device *dev, uint64_t mask);
 
+// DMA streaming mappings (for non-coherent DMA).
+enum dma_data_direction {
+  DMA_BIDIRECTIONAL = 0,
+  DMA_TO_DEVICE = 1,
+  DMA_FROM_DEVICE = 2,
+  DMA_NONE = 3,
+};
+
+dma_addr_t dma_map_single(struct device *dev, void *ptr, size_t size,
+                           enum dma_data_direction dir);
+void dma_unmap_single(struct device *dev, dma_addr_t addr, size_t size,
+                       enum dma_data_direction dir);
+dma_addr_t dma_map_page(struct device *dev, void *page,
+                         unsigned long offset, size_t size,
+                         enum dma_data_direction dir);
+void dma_unmap_page(struct device *dev, dma_addr_t addr, size_t size,
+                     enum dma_data_direction dir);
+void dma_sync_single_for_cpu(struct device *dev, dma_addr_t addr,
+                              size_t size, enum dma_data_direction dir);
+void dma_sync_single_for_device(struct device *dev, dma_addr_t addr,
+                                 size_t size, enum dma_data_direction dir);
+int dma_mapping_error(struct device *dev, dma_addr_t addr);
+
 // --- x86 Port I/O ---
 
 uint8_t inb(uint16_t port);

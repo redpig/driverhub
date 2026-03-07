@@ -26,6 +26,9 @@
 #include "src/shim/subsystem/input.h"
 #include "src/shim/subsystem/spi.h"
 #include "src/shim/subsystem/usb.h"
+#include "src/shim/subsystem/block.h"
+#include "src/shim/subsystem/scsi.h"
+#include "src/shim/kernel/clk.h"
 
 // Forward declarations for RTC, timer, and ABI-compat shim symbols.
 extern "C" {
@@ -454,6 +457,114 @@ void SymbolRegistry::RegisterKmiSymbols() {
   REGISTER_SYMBOL(kobject_create_and_add);
   REGISTER_SYMBOL(kobject_put);
   REGISTER_SYMBOL(kobject_del);
+
+  // Block layer — blk_mq
+  REGISTER_SYMBOL(blk_mq_alloc_tag_set);
+  REGISTER_SYMBOL(blk_mq_free_tag_set);
+  REGISTER_SYMBOL(blk_mq_init_queue);
+  REGISTER_SYMBOL(blk_mq_alloc_disk);
+  REGISTER_SYMBOL(blk_mq_start_hw_queues);
+  REGISTER_SYMBOL(blk_mq_stop_hw_queues);
+  REGISTER_SYMBOL(blk_mq_start_stopped_hw_queues);
+  REGISTER_SYMBOL(blk_mq_complete_request);
+  REGISTER_SYMBOL(blk_mq_end_request);
+  REGISTER_SYMBOL(blk_mq_start_request);
+  REGISTER_SYMBOL(blk_mq_free_request);
+  REGISTER_SYMBOL(blk_mq_kick_requeue_list);
+  REGISTER_SYMBOL(blk_mq_requeue_request);
+  REGISTER_SYMBOL(blk_mq_tagset_busy_iter);
+  REGISTER_SYMBOL(blk_mq_map_queues);
+
+  // Block layer — gendisk
+  REGISTER_SYMBOL(alloc_disk);
+  REGISTER_SYMBOL(add_disk);
+  REGISTER_SYMBOL(del_gendisk);
+  REGISTER_SYMBOL(put_disk);
+  REGISTER_SYMBOL(set_capacity);
+  REGISTER_SYMBOL(get_capacity);
+
+  // Block layer — request queue config
+  REGISTER_SYMBOL(blk_queue_logical_block_size);
+  REGISTER_SYMBOL(blk_queue_physical_block_size);
+  REGISTER_SYMBOL(blk_queue_max_hw_sectors);
+  REGISTER_SYMBOL(blk_queue_max_segments);
+  REGISTER_SYMBOL(blk_queue_max_segment_size);
+  REGISTER_SYMBOL(blk_queue_dma_alignment);
+  REGISTER_SYMBOL(blk_queue_flag_set);
+  REGISTER_SYMBOL(blk_queue_flag_clear);
+  REGISTER_SYMBOL(blk_queue_rq_timeout);
+
+  // Block layer — bio
+  REGISTER_SYMBOL(bio_alloc);
+  REGISTER_SYMBOL(bio_put);
+  REGISTER_SYMBOL(bio_endio);
+  REGISTER_SYMBOL(submit_bio);
+
+  // Block layer — registration
+  REGISTER_SYMBOL(register_blkdev);
+  REGISTER_SYMBOL(unregister_blkdev);
+
+  // SCSI mid-layer
+  REGISTER_SYMBOL(scsi_host_alloc);
+  REGISTER_SYMBOL(scsi_add_host_with_dma);
+  REGISTER_SYMBOL(scsi_scan_host);
+  REGISTER_SYMBOL(scsi_remove_host);
+  REGISTER_SYMBOL(scsi_host_put);
+  REGISTER_SYMBOL(scsi_done);
+  REGISTER_SYMBOL(scsi_change_queue_depth);
+  REGISTER_SYMBOL(scsi_report_bus_reset);
+  REGISTER_SYMBOL(scsi_dma_map);
+  REGISTER_SYMBOL(scsi_dma_unmap);
+
+  // DMA streaming mappings
+  REGISTER_SYMBOL(dma_map_single);
+  REGISTER_SYMBOL(dma_unmap_single);
+  REGISTER_SYMBOL(dma_map_page);
+  REGISTER_SYMBOL(dma_unmap_page);
+  REGISTER_SYMBOL(dma_sync_single_for_cpu);
+  REGISTER_SYMBOL(dma_sync_single_for_device);
+  REGISTER_SYMBOL(dma_mapping_error);
+
+  // Clock API
+  REGISTER_SYMBOL(clk_get);
+  REGISTER_SYMBOL(devm_clk_get);
+  REGISTER_SYMBOL(devm_clk_get_optional);
+  REGISTER_SYMBOL(clk_put);
+  REGISTER_SYMBOL(clk_prepare);
+  REGISTER_SYMBOL(clk_unprepare);
+  REGISTER_SYMBOL(clk_enable);
+  REGISTER_SYMBOL(clk_disable);
+  REGISTER_SYMBOL(clk_prepare_enable);
+  REGISTER_SYMBOL(clk_disable_unprepare);
+  REGISTER_SYMBOL(clk_get_rate);
+  REGISTER_SYMBOL(clk_set_rate);
+  REGISTER_SYMBOL(clk_round_rate);
+
+  // Regulator API
+  REGISTER_SYMBOL(regulator_get);
+  REGISTER_SYMBOL(devm_regulator_get);
+  REGISTER_SYMBOL(devm_regulator_get_optional);
+  REGISTER_SYMBOL(regulator_put);
+  REGISTER_SYMBOL(regulator_enable);
+  REGISTER_SYMBOL(regulator_disable);
+  REGISTER_SYMBOL(regulator_is_enabled);
+  REGISTER_SYMBOL(regulator_set_voltage);
+  REGISTER_SYMBOL(regulator_get_voltage);
+  REGISTER_SYMBOL(regulator_set_load);
+
+  // PM runtime
+  REGISTER_SYMBOL(pm_runtime_enable);
+  REGISTER_SYMBOL(pm_runtime_disable);
+  REGISTER_SYMBOL(pm_runtime_get_sync);
+  REGISTER_SYMBOL(pm_runtime_put);
+  REGISTER_SYMBOL(pm_runtime_put_sync);
+  REGISTER_SYMBOL(pm_runtime_set_active);
+  REGISTER_SYMBOL(pm_runtime_set_autosuspend_delay);
+  REGISTER_SYMBOL(pm_runtime_use_autosuspend);
+  REGISTER_SYMBOL(pm_runtime_resume_and_get);
+  REGISTER_SYMBOL(pm_runtime_get_noresume);
+  REGISTER_SYMBOL(pm_runtime_put_noidle);
+  REGISTER_SYMBOL(pm_runtime_suspended);
 
   fprintf(stderr, "driverhub: registered %zu KMI symbols\n", symbols_.size());
 }
