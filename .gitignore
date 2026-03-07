@@ -16,6 +16,7 @@ tests/modinfo_parser_test
 # Downloaded third-party SDKs (large, fetched at build time)
 third_party/fuchsia-idk/
 third_party/elfldltl/
+third_party/clang/
 
 # OS files
 .DS_Store
