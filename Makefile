@@ -94,11 +94,12 @@ GKI_KO := third_party/linux/rtc-test/rtc-test-gki.ko
 EXPORT_KO := tests/export_module.ko
 IMPORT_KO := tests/import_module.ko
 GPIO_KO := tests/gpio_test_module.ko
+RTC_CMOS_KO := tests/rtc_cmos.ko
 RTC_OPS_TEST := tests/rtc_ops_test
 DEP_SORT_TEST := tests/dependency_sort_test
 MODINFO_TEST := tests/modinfo_parser_test
 
-.PHONY: all clean test test-rtc test-gki test-rtc-ops test-intermodule test-gpio test-dep-sort test-modinfo test-all
+.PHONY: all clean test test-rtc test-rtc-cmos test-gki test-rtc-ops test-intermodule test-gpio test-dep-sort test-modinfo test-all
 
 all: $(TARGET) $(GKI_TARGET)
 
@@ -107,6 +108,9 @@ test: $(TARGET) $(TEST_KO)
 
 test-rtc: $(TARGET) $(RTC_TEST_KO)
 	echo | ./$(TARGET) $(RTC_TEST_KO)
+
+test-rtc-cmos: $(TARGET) $(RTC_CMOS_KO)
+	echo | ./$(TARGET) $(RTC_CMOS_KO)
 
 test-gki: $(GKI_TARGET)
 	echo | ./$(GKI_TARGET) $(GKI_KO)
@@ -144,6 +148,9 @@ $(IMPORT_KO): tests/import_module.c
 
 $(GPIO_KO): tests/gpio_test_module.c
 	$(CC) -c -o $@ $< $(SHIM_INCLUDES) -fno-stack-protector -fno-pie
+
+$(RTC_CMOS_KO): tests/rtc_cmos_module.c
+	$(CC) -c -o $@ $< -fno-stack-protector -fno-pie
 
 # Test binaries: compile test .cc without -Isrc/shim/include to avoid
 # Linux kernel type conflicts with gtest's system header includes.
