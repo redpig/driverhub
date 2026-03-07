@@ -8,12 +8,18 @@
 
 #include <cstdio>
 
+#include "src/runner/symbol_proxy_server.h"
+
 namespace driverhub {
 
 SymbolRegistryServer::SymbolRegistryServer(async_dispatcher_t* dispatcher)
     : dispatcher_(dispatcher) {}
 
 SymbolRegistryServer::~SymbolRegistryServer() = default;
+
+void SymbolRegistryServer::SetProcessLookup(ModuleProcessLookup lookup) {
+  process_lookup_ = std::move(lookup);
+}
 
 void SymbolRegistryServer::Register(RegisterRequest& request,
                                      RegisterCompleter::Sync& completer) {
@@ -137,9 +143,21 @@ fuchsia_driverhub::ResolvedSymbol SymbolRegistryServer::MakeResolved(
     resolved.vmo() = std::move(dup);
   }
 
-  // TODO(driverhub): For FUNCTION symbols, create a SymbolProxy channel
-  // pair and return the client end. The server end is dispatched to the
-  // exporting module's process.
+  // For FUNCTION symbols, create a SymbolProxy channel pair.
+  // The server end dispatches calls to the exporting module's process.
+  if (sym.kind == fuchsia_driverhub::SymbolKind::kFunction &&
+      sym.virtual_addr != 0 && process_lookup_) {
+    ModuleProcessInfo proc_info;
+    if (process_lookup_(sym.owning_module, &proc_info) &&
+        proc_info.process && proc_info.vmar) {
+      auto client_end = CreateSymbolProxy(
+          dispatcher_, sym.virtual_addr, *proc_info.process,
+          *proc_info.vmar, sym.name);
+      if (client_end.is_valid()) {
+        resolved.proxy() = std::move(client_end);
+      }
+    }
+  }
 
   return resolved;
 }

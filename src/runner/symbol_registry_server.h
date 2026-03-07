@@ -7,8 +7,11 @@
 
 #include <fidl/fuchsia.driverhub/cpp/fidl.h>
 #include <lib/async/dispatcher.h>
+#include <lib/zx/process.h>
+#include <lib/zx/vmar.h>
 #include <lib/zx/vmo.h>
 
+#include <functional>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -27,9 +30,22 @@ struct RegisteredSymbol {
   // Byte offset within the VMO.
   uint64_t offset = 0;
 
+  // Virtual address of the symbol in the owning process's address space.
+  // Used for function proxy dispatch.
+  uint64_t virtual_addr = 0;
+
   // Function or data.
   fuchsia_driverhub::SymbolKind kind = fuchsia_driverhub::SymbolKind::kData;
 };
+
+// Callback to look up a module's process handles for SymbolProxy creation.
+// Returns false if the module process is not found.
+struct ModuleProcessInfo {
+  const zx::process* process = nullptr;
+  const zx::vmar* vmar = nullptr;
+};
+using ModuleProcessLookup =
+    std::function<bool(const std::string& module_name, ModuleProcessInfo* out)>;
 
 // FIDL server implementing fuchsia.driverhub.SymbolRegistry.
 //
@@ -41,6 +57,10 @@ class SymbolRegistryServer
  public:
   explicit SymbolRegistryServer(async_dispatcher_t* dispatcher);
   ~SymbolRegistryServer() override;
+
+  // Set the callback used to look up a module's process handles.
+  // Required for creating SymbolProxy channels for function symbols.
+  void SetProcessLookup(ModuleProcessLookup lookup);
 
   // fuchsia.driverhub.SymbolRegistry implementation.
   void Register(RegisterRequest& request,
@@ -63,6 +83,7 @@ class SymbolRegistryServer
       const RegisteredSymbol& sym) const;
 
   async_dispatcher_t* dispatcher_;
+  ModuleProcessLookup process_lookup_;
 
   mutable std::mutex mutex_;
   std::unordered_map<std::string, RegisteredSymbol> symbols_

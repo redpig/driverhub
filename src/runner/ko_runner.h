@@ -9,6 +9,7 @@
 #include <lib/async/dispatcher.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -36,11 +37,14 @@ struct RunningModule {
   std::string name;
   std::string colocation_group;
 
-  // Handle to the process hosting this module.
-  zx::process process;
+  // The ManagedProcess hosting this module. Owned here for isolated modules;
+  // for colocated modules, this is nullptr (the process is owned by
+  // colocation_groups_).
+  std::unique_ptr<ManagedProcess> managed_process;
 
-  // Server end of the ComponentController, used to report lifecycle events.
-  fidl::ServerEnd<fuchsia_component_runner::ComponentController> controller;
+  // Binding for the ComponentController protocol.
+  std::optional<fidl::ServerBinding<fuchsia_component_runner::ComponentController>>
+      controller_binding;
 };
 
 // DriverHub's component runner for Linux .ko kernel modules.
@@ -60,6 +64,10 @@ class KoRunner : public fidl::Server<fuchsia_component_runner::ComponentRunner> 
 
   // fuchsia.component.runner.ComponentRunner implementation.
   void Start(StartRequest& request, StartCompleter::Sync& completer) override;
+
+  // Stop a running module by URL. Called when receiving Stop/Kill via
+  // ComponentController.
+  void StopModule(const std::string& url, zx_status_t epitaph);
 
  private:
   // Parse the program dictionary from ComponentStartInfo to extract module
@@ -90,6 +98,22 @@ class KoRunner : public fidl::Server<fuchsia_component_runner::ComponentRunner> 
   // All running module instances, keyed by component URL.
   std::unordered_map<std::string, std::unique_ptr<RunningModule>>
       running_modules_;
+};
+
+// Implements fuchsia.component.runner.ComponentController for a single
+// running .ko module. Delegates Stop/Kill to KoRunner::StopModule().
+class ModuleController
+    : public fidl::Server<fuchsia_component_runner::ComponentController> {
+ public:
+  ModuleController(KoRunner* runner, std::string url);
+  ~ModuleController() override;
+
+  void Stop(StopCompleter::Sync& completer) override;
+  void Kill(KillCompleter::Sync& completer) override;
+
+ private:
+  KoRunner* runner_;
+  std::string url_;
 };
 
 }  // namespace driverhub

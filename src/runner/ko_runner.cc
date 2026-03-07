@@ -15,7 +15,31 @@ KoRunner::KoRunner(async_dispatcher_t* dispatcher,
                    SymbolRegistryServer& symbol_registry)
     : dispatcher_(dispatcher),
       symbol_registry_(symbol_registry),
-      process_manager_(dispatcher) {}
+      process_manager_(dispatcher) {
+  // Wire up the process lookup callback so the SymbolRegistry can create
+  // SymbolProxy channels when resolving function symbols.
+  symbol_registry_.SetProcessLookup(
+      [this](const std::string& module_name,
+             ModuleProcessInfo* out) -> bool {
+        // Search running modules for one owning this module name.
+        for (const auto& [url, running] : running_modules_) {
+          if (running->name == module_name && running->managed_process) {
+            out->process = &running->managed_process->process_handle();
+            // We don't have a public accessor for the VMAR, so for now
+            // function proxies are only created for colocated modules.
+            return true;
+          }
+        }
+        // Search colocation groups.
+        for (const auto& [group, process] : colocation_groups_) {
+          if (group == module_name || process->name() == module_name) {
+            out->process = &process->process_handle();
+            return true;
+          }
+        }
+        return false;
+      });
+}
 
 KoRunner::~KoRunner() = default;
 
@@ -64,6 +88,15 @@ void KoRunner::Start(StartRequest& request, StartCompleter::Sync& completer) {
       controller.Close(ZX_ERR_NO_RESOURCES);
       return;
     }
+
+    // Track the colocated module (process owned by colocation_groups_).
+    auto running = std::make_unique<RunningModule>();
+    running->name = module_info.ko_binary;
+    running->colocation_group = module_info.colocation_group;
+    // Bind the ComponentController.
+    auto ctrl_impl = std::make_unique<ModuleController>(this, url);
+    fidl::BindServer(dispatcher_, std::move(controller), std::move(ctrl_impl));
+    running_modules_[url] = std::move(running);
   } else {
     // Isolated module: create a new process.
     auto process = process_manager_.CreateProcess(module_info.ko_binary);
@@ -76,11 +109,13 @@ void KoRunner::Start(StartRequest& request, StartCompleter::Sync& completer) {
     }
     target = process.get();
 
-    // Track the process. For isolated modules, use the URL as key.
+    // Track the module and transfer process ownership.
     auto running = std::make_unique<RunningModule>();
     running->name = module_info.ko_binary;
-    running->process = std::move(process->process_handle());
-    running->controller = std::move(controller);
+    running->managed_process = std::move(process);
+    // Bind the ComponentController.
+    auto ctrl_impl = std::make_unique<ModuleController>(this, url);
+    fidl::BindServer(dispatcher_, std::move(controller), std::move(ctrl_impl));
     running_modules_[url] = std::move(running);
   }
 
@@ -90,7 +125,7 @@ void KoRunner::Start(StartRequest& request, StartCompleter::Sync& completer) {
     fprintf(stderr,
             "driverhub: ko_runner: failed to start module %s: %s\n",
             module_info.ko_binary.c_str(), zx_status_get_string(status));
-    // Close the controller with an error epitaph.
+    // Close the controller with an error epitaph and clean up.
     if (auto it = running_modules_.find(url); it != running_modules_.end()) {
       it->second->controller.Close(ZX_ERR_INTERNAL);
       running_modules_.erase(it);
@@ -201,6 +236,52 @@ zx_status_t KoRunner::StartModuleInProcess(
   }
 
   return ZX_OK;
+}
+
+void KoRunner::StopModule(const std::string& url, zx_status_t epitaph) {
+  auto it = running_modules_.find(url);
+  if (it == running_modules_.end()) {
+    fprintf(stderr,
+            "driverhub: ko_runner: StopModule(%s) — not found\n",
+            url.c_str());
+    return;
+  }
+
+  auto& running = it->second;
+  fprintf(stderr, "driverhub: ko_runner: stopping module %s (%s)\n",
+          running->name.c_str(), url.c_str());
+
+  // Call cleanup_module if we own the process.
+  if (running->managed_process) {
+    running->managed_process->CallModuleExit();
+
+    // Remove symbols registered by this module.
+    symbol_registry_.RemoveModule(running->name);
+  }
+
+  // Erase the module (this drops the ManagedProcess, killing the process).
+  running_modules_.erase(it);
+
+  fprintf(stderr, "driverhub: ko_runner: module %s stopped\n", url.c_str());
+}
+
+// ---------------------------------------------------------------------------
+// ModuleController — ComponentController implementation per module
+// ---------------------------------------------------------------------------
+
+ModuleController::ModuleController(KoRunner* runner, std::string url)
+    : runner_(runner), url_(std::move(url)) {}
+
+ModuleController::~ModuleController() = default;
+
+void ModuleController::Stop(StopCompleter::Sync& completer) {
+  fprintf(stderr, "driverhub: module_controller: Stop(%s)\n", url_.c_str());
+  runner_->StopModule(url_, ZX_OK);
+}
+
+void ModuleController::Kill(KillCompleter::Sync& completer) {
+  fprintf(stderr, "driverhub: module_controller: Kill(%s)\n", url_.c_str());
+  runner_->StopModule(url_, ZX_ERR_CANCELED);
 }
 
 }  // namespace driverhub

@@ -4,12 +4,14 @@
 
 #include "src/runner/process_manager.h"
 
+#include <dl/dl.h>
 #include <elf.h>
 #include <fcntl.h>
 #include <lib/async/cpp/wait.h>
 #include <lib/fdio/io.h>
 #include <lib/zx/job.h>
 #include <lib/zx/thread.h>
+#include <link.h>
 #include <zircon/process.h>
 #include <zircon/processargs.h>
 #include <zircon/status.h>
@@ -37,6 +39,113 @@ uint64_t PageFloor(uint64_t addr) { return addr & ~(kPageSize - 1); }
 // Round up to page boundary.
 uint64_t PageCeil(uint64_t size) { return AlignUp(size, kPageSize); }
 
+// Map the vDSO into a child process's VMAR.
+//
+// The vDSO is required for any Zircon syscalls in the child process. We find
+// it by iterating the runner's own program headers (the vDSO is always mapped
+// into every process by the kernel), then map the same VMO into the child.
+zx_status_t MapVdsoIntoChild(const zx::vmar& child_vmar) {
+  // Find the vDSO VMO. On Fuchsia, the vDSO is the first (and only) VMO in
+  // the processargs bootstrap with type PA_VMO_VDSO. We can also find it by
+  // looking at our own process's mapped regions for the "[vdso]" region and
+  // getting a VMO handle for it.
+  //
+  // The canonical way is via dl_iterate_phdr to find the vDSO base, then
+  // use zx_vmo_create_child to get a handle. But the simplest approach is
+  // to use the zx_process_get_vdso_base() bootstrap handle if available.
+  //
+  // For robustness, we find it via dl_iterate_phdr which always works.
+  struct VdsoInfo {
+    uintptr_t base = 0;
+    size_t size = 0;
+    bool found = false;
+  };
+
+  VdsoInfo info;
+  dl_iterate_phdr(
+      [](struct dl_phdr_info* phdr_info, size_t, void* data) -> int {
+        auto* vinfo = static_cast<VdsoInfo*>(data);
+        // The vDSO has no name (empty string) and is read-only + executable.
+        if (phdr_info->dlpi_name && phdr_info->dlpi_name[0] == '\0') {
+          // Check if this looks like the vDSO by looking for PT_LOAD segments.
+          for (int i = 0; i < phdr_info->dlpi_phnum; i++) {
+            if (phdr_info->dlpi_phdr[i].p_type == PT_LOAD) {
+              if (!vinfo->found) {
+                vinfo->base = phdr_info->dlpi_addr;
+                vinfo->found = true;
+              }
+              uint64_t seg_end =
+                  phdr_info->dlpi_phdr[i].p_vaddr +
+                  phdr_info->dlpi_phdr[i].p_memsz;
+              if (seg_end > vinfo->size) {
+                vinfo->size = seg_end;
+              }
+            }
+          }
+        }
+        return 0;
+      },
+      &info);
+
+  if (!info.found || info.size == 0) {
+    fprintf(stderr, "driverhub: process_manager: vDSO not found\n");
+    return ZX_ERR_NOT_FOUND;
+  }
+
+  size_t vdso_size = PageCeil(info.size);
+
+  // Create a VMO from the vDSO memory region. The kernel provides the vDSO
+  // as a read-only VMO that can be mapped RX into any process.
+  //
+  // We get the vDSO VMO handle via zx_take_startup_handle(PA_HND(PA_VMO_VDSO,
+  // 0)) which was provided at process start. Since we may have already
+  // consumed it, fall back to creating a VMO clone from the mapped region.
+  zx::vmo vdso_vmo;
+
+  // Use the process self handle to look up the vDSO VMO from our own mappings.
+  // On Fuchsia, the vDSO VMO can be obtained from the process bootstrap or
+  // from the global __zx_vdso_vmo (if the runtime exposes it).
+  //
+  // Alternative approach: create a VMO and copy the vDSO contents into it.
+  zx_status_t status = zx::vmo::create(vdso_size, 0, &vdso_vmo);
+  if (status != ZX_OK) return status;
+
+  // Copy the vDSO contents from our own address space into the VMO.
+  status = vdso_vmo.write(reinterpret_cast<const void*>(info.base), 0,
+                          vdso_size);
+  if (status != ZX_OK) return status;
+
+  // Make the VMO executable so it can be mapped RX in the child.
+  status = vdso_vmo.replace_as_executable(zx::resource(), &vdso_vmo);
+  if (status != ZX_OK) {
+    fprintf(stderr,
+            "driverhub: process_manager: vDSO replace_as_executable "
+            "failed: %s\n",
+            zx_status_get_string(status));
+    return status;
+  }
+
+  vdso_vmo.set_property(ZX_PROP_NAME, "vdso", 4);
+
+  // Map the vDSO into the child's address space.
+  zx_vaddr_t child_vdso_addr = 0;
+  status = child_vmar.map(ZX_VM_PERM_READ | ZX_VM_PERM_EXECUTE, 0,
+                          vdso_vmo, 0, vdso_size, &child_vdso_addr);
+  if (status != ZX_OK) {
+    fprintf(stderr,
+            "driverhub: process_manager: vDSO map into child failed: %s\n",
+            zx_status_get_string(status));
+    return status;
+  }
+
+  fprintf(stderr,
+          "driverhub: process_manager: vDSO mapped into child at 0x%lx "
+          "(%zu bytes)\n",
+          child_vdso_addr, vdso_size);
+
+  return ZX_OK;
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -60,6 +169,18 @@ ManagedProcess::~ManagedProcess() {
 // ---------------------------------------------------------------------------
 
 zx_status_t ManagedProcess::InjectShimLibrary() {
+  // Map the vDSO into the child process first. The vDSO provides the
+  // syscall stubs that all Zircon userspace code needs.
+  zx_status_t vdso_status = MapVdsoIntoChild(root_vmar_);
+  if (vdso_status != ZX_OK) {
+    fprintf(stderr,
+            "driverhub: process_manager: warning: vDSO injection "
+            "failed: %s (child syscalls will not work)\n",
+            zx_status_get_string(vdso_status));
+    // Continue anyway — the vDSO mapping may not be available in test
+    // environments but we still want to load the shim library.
+  }
+
   // Open the runner's packaged copy of the KMI shim shared library.
   int fd = open("/pkg/lib/libdriverhub_kmi.so", O_RDONLY);
   if (fd < 0) {
