@@ -734,14 +734,48 @@ zx_status_t ManagedProcess::LoadModule(const uint8_t* data, size_t size,
       }
 
       // Try the cross-module SymbolRegistry (EXPORT_SYMBOL from other .ko).
-      // For now, the registry stores VMO + offset; we'd need to map that
-      // VMO into the child. For colocated modules, the symbol address is
-      // already in the same address space.
-      // TODO(driverhub): Implement cross-process symbol resolution via
-      // SymbolProxy for non-colocated modules.
-      fprintf(stderr,
-              "driverhub: process_manager: unresolved symbol: %s\n",
-              sym_name);
+      auto lookup = registry.LookupDirect(sym_name);
+      if (lookup.found) {
+        if (lookup.kind == fuchsia_driverhub::SymbolKind::kData &&
+            lookup.vmo) {
+          // DATA symbol: map the exporting module's VMO into this process
+          // and compute the symbol address from offset.
+          zx::vmo dup_vmo;
+          zx_status_t dup_status =
+              lookup.vmo->duplicate(ZX_RIGHT_SAME_RIGHTS, &dup_vmo);
+          if (dup_status == ZX_OK) {
+            uint64_t vmo_size = 0;
+            dup_vmo.get_size(&vmo_size);
+            zx_vaddr_t data_addr = 0;
+            dup_status = root_vmar_.map(ZX_VM_PERM_READ | ZX_VM_PERM_WRITE,
+                                        0, dup_vmo, 0, vmo_size, &data_addr);
+            if (dup_status == ZX_OK) {
+              sym_addrs[i] = data_addr + lookup.offset;
+              child_mappings_.push_back(
+                  {std::move(dup_vmo), data_addr, vmo_size});
+              continue;
+            }
+          }
+          fprintf(stderr,
+                  "driverhub: process_manager: failed to map DATA "
+                  "symbol %s: %s\n",
+                  sym_name, zx_status_get_string(dup_status));
+        } else if (lookup.virtual_addr != 0) {
+          // Colocated module: symbol is in the same address space.
+          sym_addrs[i] = lookup.virtual_addr;
+          continue;
+        }
+        // FUNCTION symbols from non-colocated modules require a
+        // trampoline stub in the child that marshals calls over a
+        // SymbolProxy channel. This needs architecture-specific code
+        // generation and is deferred to a future phase.
+      }
+
+      if (sym_addrs[i] == 0) {
+        fprintf(stderr,
+                "driverhub: process_manager: unresolved symbol: %s\n",
+                sym_name);
+      }
     } else if (sym.st_shndx < shnum) {
       if (sections[sym.st_shndx].flags & SHF_ALLOC) {
         sym_addrs[i] =

@@ -125,6 +125,24 @@ void SymbolRegistryServer::RemoveModule(const std::string& module_name) {
           removed, module_name.c_str(), symbols_.size());
 }
 
+SymbolRegistryServer::DirectLookupResult SymbolRegistryServer::LookupDirect(
+    const std::string& name) const {
+  std::lock_guard lock(mutex_);
+  auto it = symbols_.find(name);
+  if (it == symbols_.end()) {
+    return {};
+  }
+  DirectLookupResult result;
+  result.found = true;
+  result.virtual_addr = it->second.virtual_addr;
+  result.offset = it->second.offset;
+  result.kind = it->second.kind;
+  if (it->second.vmo.is_valid()) {
+    result.vmo = &it->second.vmo;
+  }
+  return result;
+}
+
 size_t SymbolRegistryServer::size() const {
   std::lock_guard lock(mutex_);
   return symbols_.size();

@@ -74,6 +74,21 @@ class SymbolRegistryServer
   // Called when a module process crashes or is stopped.
   void RemoveModule(const std::string& module_name);
 
+  // Direct in-process symbol lookup (no FIDL). Used by LoadModule in the
+  // runner process to resolve cross-module symbols during .ko loading.
+  // Returns the RegisteredSymbol pointer, or nullptr if not found.
+  // The returned pointer is only valid while holding the lock (caller
+  // should copy what it needs).
+  struct DirectLookupResult {
+    bool found = false;
+    uint64_t virtual_addr = 0;
+    uint64_t offset = 0;
+    fuchsia_driverhub::SymbolKind kind = fuchsia_driverhub::SymbolKind::kData;
+    // For DATA symbols: VMO handle to map into child. Caller must dup.
+    const zx::vmo* vmo = nullptr;
+  };
+  DirectLookupResult LookupDirect(const std::string& name) const;
+
   // Returns the number of registered symbols.
   size_t size() const;
 
