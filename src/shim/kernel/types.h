@@ -12,7 +12,9 @@
 
 #include <stdint.h>
 
-#ifndef __Fuchsia__
+#ifdef __Fuchsia__
+#include <zircon/types.h>
+#else
 typedef int32_t zx_status_t;
 #define ZX_OK 0
 #define ZX_ERR_INTERNAL (-1)

@@ -37,7 +37,13 @@ struct vm_area_struct;
 struct seq_file;
 struct dentry;
 
-#include <sys/types.h>  // loff_t, dev_t, ssize_t
+#include <sys/types.h>  // dev_t, ssize_t
+
+// loff_t: defined by glibc on Linux, but not by Fuchsia's musl.
+#if defined(__Fuchsia__) && !defined(_LOFF_T_DEFINED)
+#define _LOFF_T_DEFINED
+typedef long long loff_t;
+#endif
 
 #ifndef __fmode_t_defined
 typedef unsigned int fmode_t;

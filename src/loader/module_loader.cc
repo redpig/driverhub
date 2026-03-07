@@ -115,6 +115,32 @@ std::unique_ptr<LoadedModule> ModuleLoader::Load(std::string_view name,
     }
   }
 
+#if defined(__x86_64__)
+  // Count PC32/PLT32 relocations to estimate trampoline space needed.
+  // Each trampoline is 14 bytes: FF 25 00 00 00 00 [8-byte abs addr].
+  // We over-estimate (counting all, not just out-of-range) — the extra
+  // space is negligible.
+  size_t trampoline_count = 0;
+  for (uint16_t i = 0; i < shnum; i++) {
+    if (shdrs[i].sh_type != SHT_RELA) continue;
+    auto* relas = reinterpret_cast<const Elf64_Rela*>(
+        data + shdrs[i].sh_offset);
+    size_t rela_count = shdrs[i].sh_size / sizeof(Elf64_Rela);
+    for (size_t j = 0; j < rela_count; j++) {
+      uint32_t rtype = ELF64_R_TYPE(relas[j].r_info);
+      if (rtype == 2 || rtype == 4) {  // R_X86_64_PC32 or PLT32
+        trampoline_count++;
+      }
+    }
+  }
+  constexpr size_t kTrampolineSize = 14;  // jmp [rip+0]; .quad addr
+  size_t trampoline_space = trampoline_count * kTrampolineSize;
+  // Align trampoline area to 16 bytes.
+  total_alloc = (total_alloc + 15) & ~15UL;
+  size_t trampoline_offset = total_alloc;
+  total_alloc += trampoline_space;
+#endif
+
   // Allocate RWX memory for all loadable sections via the platform allocator.
   // On host this uses mmap; on Fuchsia this uses VMOs.
   auto* alloc = allocator_.Allocate(total_alloc);
@@ -285,14 +311,47 @@ std::unique_ptr<LoadedModule> ModuleLoader::Load(std::string_view name,
         case 1:  // R_X86_64_64
           *reinterpret_cast<uint64_t*>(patch_addr) = S + A;
           break;
-        case 2:  // R_X86_64_PC32
-          *reinterpret_cast<int32_t*>(patch_addr) =
-              static_cast<int32_t>((S + A) - P);
+        case 2:   // R_X86_64_PC32
+        case 4: { // R_X86_64_PLT32
+          int64_t rel_val = static_cast<int64_t>((S + A) - P);
+          if (rel_val > INT32_MAX || rel_val < INT32_MIN) {
+            // Target is >2GB away. Emit a trampoline in the module's
+            // allocation (which IS within 32-bit range of the call site)
+            // and redirect the call there.
+            //
+            // Trampoline: FF 25 00 00 00 00  jmp [rip+0]
+            //             <8-byte abs addr>
+            if (trampoline_offset + kTrampolineSize > alloc->size) {
+              fprintf(stderr,
+                      "driverhub: %.*s: trampoline space exhausted\n",
+                      (int)name.size(), name.data());
+              break;
+            }
+            // Build trampoline: jmp [rip+0]; .quad <absolute_target>
+            // The trampoline target is S (the symbol's absolute address).
+            // The addend A (typically -4) accounts for RIP advancement in
+            // the original call/jmp instruction and must be included in the
+            // relocation to the trampoline, not in the trampoline target.
+            uint8_t* tramp = alloc_base + trampoline_offset;
+            tramp[0] = 0xFF;
+            tramp[1] = 0x25;
+            tramp[2] = tramp[3] = tramp[4] = tramp[5] = 0;  // disp32=0
+            memcpy(tramp + 6, &S, 8);  // absolute target = S
+
+            // The relocation stores (target + A - P). Since the call/jmp
+            // instruction computes branch_dest = disp32 + RIP = disp32 + P - A,
+            // we need disp32 = T + A - P so that branch_dest = T.
+            uint64_t T = reinterpret_cast<uint64_t>(tramp);
+            int64_t tramp_rel = static_cast<int64_t>((T + A) - P);
+            *reinterpret_cast<int32_t*>(patch_addr) =
+                static_cast<int32_t>(tramp_rel);
+            trampoline_offset += kTrampolineSize;
+          } else {
+            *reinterpret_cast<int32_t*>(patch_addr) =
+                static_cast<int32_t>(rel_val);
+          }
           break;
-        case 4:  // R_X86_64_PLT32
-          *reinterpret_cast<int32_t*>(patch_addr) =
-              static_cast<int32_t>((S + A) - P);
-          break;
+        }
         case 10:  // R_X86_64_32
           *reinterpret_cast<uint32_t*>(patch_addr) =
               static_cast<uint32_t>(S + A);
