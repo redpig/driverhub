@@ -1,0 +1,41 @@
+{
+    include: [
+        "inspect/client.shard.cml",
+        "syslog/client.shard.cml",
+    ],
+    program: {
+        runner: "elf",
+        binary: "bin/driverhub_runner",
+    },
+    capabilities: [
+        {
+            runner: "ko",
+            path: "/svc/fuchsia.component.runner.ComponentRunner",
+        },
+        {
+            protocol: "fuchsia.driverhub.SymbolRegistry",
+        },
+    ],
+    expose: [
+        {
+            runner: "ko",
+            from: "self",
+        },
+        {
+            protocol: "fuchsia.driverhub.SymbolRegistry",
+            from: "self",
+        },
+    ],
+    use: [
+        {
+            protocol: [
+                "fuchsia.kernel.VmexResource",
+                "fuchsia.process.Launcher",
+            ],
+        },
+        {
+            protocol: "fuchsia.component.resolution.Resolver",
+            availability: "optional",
+        },
+    ],
+}

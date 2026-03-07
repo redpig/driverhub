@@ -9,6 +9,7 @@ import("//build/drivers.gni")
 group("driverhub") {
   deps = [
     ":driverhub-component",
+    ":driverhub-runner-component",
     ":driverhub-tests",
   ]
 }
@@ -111,7 +112,137 @@ fuchsia_driver_component("driverhub-component") {
   info = "meta/driverhub-info.json"
 }
 
+# ---------------------------------------------------------------------------
+# KMI shim shared library — loaded into each .ko module process.
+# ---------------------------------------------------------------------------
+
+shared_library("libdriverhub_kmi") {
+  output_name = "libdriverhub_kmi"
+
+  # All shim sources from driverhub-core that implement KMI symbols.
+  sources = [
+    "src/shim/kernel/bug.cc",
+    "src/shim/kernel/device.cc",
+    "src/shim/kernel/io.cc",
+    "src/shim/kernel/irq.cc",
+    "src/shim/kernel/memory.cc",
+    "src/shim/kernel/module.cc",
+    "src/shim/kernel/platform.cc",
+    "src/shim/kernel/print.cc",
+    "src/shim/kernel/sync.cc",
+    "src/shim/kernel/time.cc",
+    "src/shim/kernel/timer.cc",
+    "src/shim/kernel/workqueue.cc",
+    "src/shim/subsystem/cfg80211.cc",
+    "src/shim/subsystem/drm.cc",
+    "src/shim/subsystem/fs.cc",
+    "src/shim/subsystem/gpio.cc",
+    "src/shim/subsystem/i2c.cc",
+    "src/shim/subsystem/input.cc",
+    "src/shim/subsystem/rtc.cc",
+    "src/shim/subsystem/spi.cc",
+    "src/shim/subsystem/usb.cc",
+  ]
+
+  deps = [
+    "//sdk/lib/fdio",
+    "//zircon/system/ulib/async-loop:async-loop-cpp",
+    "//zircon/system/ulib/zx",
+  ]
+
+  include_dirs = [
+    ".",
+    "src/shim/include",
+  ]
+}
+
+# ---------------------------------------------------------------------------
+# DriverHub runner — serves fuchsia.component.runner.ComponentRunner for .ko
+# ---------------------------------------------------------------------------
+
+source_set("driverhub-runner-lib") {
+  sources = [
+    "src/runner/ko_runner.cc",
+    "src/runner/ko_runner.h",
+    "src/runner/process_manager.cc",
+    "src/runner/process_manager.h",
+    "src/runner/symbol_registry_server.cc",
+    "src/runner/symbol_registry_server.h",
+  ]
+
+  public_deps = [
+    ":driverhub-core",
+    "//sdk/fidl/fuchsia.component.runner:fuchsia.component.runner_cpp",
+    "//sdk/fidl/fuchsia.driverhub:fuchsia.driverhub_cpp",
+    "//sdk/lib/component/outgoing/cpp",
+    "//src/lib/elfldltl",
+    "//zircon/system/ulib/async-loop:async-loop-cpp",
+    "//zircon/system/ulib/zx",
+  ]
+
+  include_dirs = [
+    ".",
+    "src/shim/include",
+  ]
+}
+
+executable("driverhub_runner") {
+  output_name = "driverhub_runner"
+
+  sources = [
+    "src/runner/main.cc",
+  ]
+
+  deps = [
+    ":driverhub-runner-lib",
+    "//sdk/lib/component/outgoing/cpp",
+    "//zircon/system/ulib/async-loop:async-loop-cpp",
+    "//zircon/system/ulib/async-loop:async-loop-default",
+  ]
+
+  include_dirs = [
+    ".",
+    "src/shim/include",
+  ]
+}
+
+fuchsia_component("driverhub-runner-component") {
+  component_name = "driverhub-runner"
+  manifest = "meta/driverhub-runner.cml"
+  deps = [
+    ":driverhub_runner",
+    ":libdriverhub_kmi",
+  ]
+}
+
+# Template for packaging a .ko module as a Fuchsia component.
+#
+# Usage:
+#   ko_module("bmp280") {
+#     ko_binary = "path/to/bmp280.ko"
+#     manifest = "meta/bmp280.cml"
+#   }
+template("ko_module") {
+  fuchsia_component(target_name) {
+    component_name = target_name
+    manifest = invoker.manifest
+    deps = []
+    if (defined(invoker.deps)) {
+      deps += invoker.deps
+    }
+    resources = [
+      {
+        path = invoker.ko_binary
+        dest = "data/modules/" + get_path_info(invoker.ko_binary, "file")
+      },
+    ]
+  }
+}
+
+# ---------------------------------------------------------------------------
 # Unit tests.
+# ---------------------------------------------------------------------------
+
 fuchsia_unittest_package("driverhub-tests") {
   deps = [ ":driverhub-unittests" ]
 }

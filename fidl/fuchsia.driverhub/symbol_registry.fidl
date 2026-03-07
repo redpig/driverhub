@@ -1,0 +1,107 @@
+// Copyright 2024 The DriverHub Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+/// FIDL protocol for cross-module symbol registration and resolution.
+///
+/// The DriverHub runner serves this protocol. Module processes connect to it
+/// to register symbols via EXPORT_SYMBOL and to resolve intermodule
+/// dependencies during loading.
+library fuchsia.driverhub;
+
+using zx;
+
+/// Distinguishes function symbols (need proxy) from data symbols (VMO map).
+type SymbolKind = flexible enum : uint8 {
+    FUNCTION = 1;
+    DATA = 2;
+};
+
+/// A symbol exported by a module.
+type ExportedSymbol = resource table {
+    /// Symbol name (e.g. "cfg80211_scan_done").
+    1: name string:MAX;
+
+    /// VMO containing the module's loaded code or data section.
+    2: vmo zx.Handle:VMO;
+
+    /// Byte offset of the symbol within the VMO.
+    3: offset uint64;
+
+    /// Whether this is a function or data symbol.
+    4: kind SymbolKind;
+};
+
+/// Result of resolving a symbol.
+type ResolvedSymbol = resource table {
+    /// The symbol name that was resolved.
+    1: name string:MAX;
+
+    /// For DATA symbols: VMO containing the data, to be mapped into the
+    /// importing process.
+    2: vmo zx.Handle:VMO;
+
+    /// Byte offset of the symbol within the VMO.
+    3: offset uint64;
+
+    /// Symbol kind (function or data).
+    4: kind SymbolKind;
+
+    /// For FUNCTION symbols: client end of a proxy channel.
+    /// The importing process invokes the remote function via this channel.
+    5: proxy client_end:SymbolProxy;
+};
+
+/// Generic cross-process function call proxy for EXPORT_SYMBOL functions.
+///
+/// When a module calls a function exported by a non-colocated module, the
+/// shim library serializes the arguments and sends them over this channel.
+/// The runner dispatches the call to the exporting process.
+@discoverable
+protocol SymbolProxy {
+    /// Invoke the proxied function.
+    ///
+    /// Arguments and return value are serialized as raw bytes using a
+    /// compact binary format matching the function's C signature.
+    flexible Call(struct {
+        args vector<byte>:MAX;
+    }) -> (struct {
+        result vector<byte>:MAX;
+    }) error zx.Status;
+};
+
+/// Central symbol registry served by the DriverHub runner process.
+///
+/// Each module process receives a channel to this protocol in its namespace
+/// at /svc/fuchsia.driverhub.SymbolRegistry.
+@discoverable
+protocol SymbolRegistry {
+    /// Register symbols exported by a module.
+    ///
+    /// Called by libdriverhub_kmi.so when a module invokes EXPORT_SYMBOL().
+    /// The runner records each symbol's location so that other modules can
+    /// resolve it.
+    flexible Register(resource struct {
+        module_name string:MAX;
+        symbols vector<ExportedSymbol>:MAX;
+    }) -> () error zx.Status;
+
+    /// Resolve a single symbol by name.
+    ///
+    /// Returns the symbol's VMO + offset (for data) or a SymbolProxy
+    /// client end (for functions). Fails if the symbol is not registered.
+    flexible Resolve(struct {
+        name string:MAX;
+    }) -> (ResolvedSymbol) error zx.Status;
+
+    /// Resolve multiple symbols in one call.
+    ///
+    /// Used during module load to batch-resolve all undefined symbols.
+    /// Symbols that cannot be resolved are omitted from the result (the
+    /// caller should check the returned vector length).
+    flexible ResolveBatch(struct {
+        names vector<string:MAX>:MAX;
+    }) -> (resource struct {
+        symbols vector<ResolvedSymbol>:MAX;
+    }) error zx.Status;
+};
