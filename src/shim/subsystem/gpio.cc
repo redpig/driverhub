@@ -8,11 +8,19 @@
 #include <cstdlib>
 #include <mutex>
 #include <unordered_map>
+#include <vector>
+
+#include "src/shim/include/linux/gpio/driver.h"
 
 // GPIO subsystem shim.
 //
 // Maintains a simulated GPIO state table. In userspace, all GPIOs succeed
 // and maintain their set/get values in a simple map.
+//
+// GPIO chips registered via gpiochip_add_data are tracked so that:
+//   - On Fuchsia, each chip's pins can be exposed as a
+//     fuchsia.hardware.gpio/Gpio FIDL service for DFv2 composite binding.
+//   - On host, the chip's callbacks are wired into the integer GPIO API.
 //
 // On Fuchsia, each GPIO would be backed by a fuchsia.hardware.gpio/Gpio
 // FIDL connection obtained from the incoming namespace.
@@ -167,6 +175,94 @@ void gpiod_set_value(struct gpio_desc* desc, int value) {
 
 int gpiod_to_irq(const struct gpio_desc* desc) {
   return desc ? gpio_to_irq(desc->gpio) : -22;
+}
+
+// ---------------------------------------------------------------------------
+// GPIO chip (controller) registration — linux/gpio/driver.h
+// ---------------------------------------------------------------------------
+
+// Global registry of GPIO chips. Protected by g_gpio_mu (same mutex as the
+// pin state table above).
+static std::vector<struct gpio_chip*>& registered_chips() {
+  static std::vector<struct gpio_chip*> chips;
+  return chips;
+}
+
+int gpiochip_add_data(struct gpio_chip* gc, void* data) {
+  if (!gc) return -22;  // -EINVAL
+
+  gc->_data = data;
+
+  // If base == -1, auto-assign a base.
+  if (gc->base < 0) {
+    std::lock_guard<std::mutex> lock(g_gpio_mu);
+    int next_base = 0;
+    for (auto* chip : registered_chips()) {
+      int chip_end = chip->base + static_cast<int>(chip->ngpio);
+      if (chip_end > next_base) next_base = chip_end;
+    }
+    gc->base = next_base;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(g_gpio_mu);
+
+    // Wire the chip's callbacks into the per-pin state table so that
+    // integer-GPIO API calls route through the chip ops.
+    for (unsigned i = 0; i < gc->ngpio; i++) {
+      unsigned gpio = static_cast<unsigned>(gc->base) + i;
+      g_gpios[gpio] = {true, false, 0, gc->label};
+    }
+
+    registered_chips().push_back(gc);
+  }
+
+  fprintf(stderr,
+          "driverhub: gpio: registered chip '%s' base=%d ngpio=%u\n",
+          gc->label ? gc->label : "(null)", gc->base, gc->ngpio);
+  return 0;
+}
+
+void gpiochip_remove(struct gpio_chip* gc) {
+  if (!gc) return;
+
+  std::lock_guard<std::mutex> lock(g_gpio_mu);
+
+  // Remove pins from the state table.
+  for (unsigned i = 0; i < gc->ngpio; i++) {
+    g_gpios.erase(static_cast<unsigned>(gc->base) + i);
+  }
+
+  // Remove from registered_chips.
+  auto& chips = registered_chips();
+  for (auto it = chips.begin(); it != chips.end(); ++it) {
+    if (*it == gc) {
+      chips.erase(it);
+      break;
+    }
+  }
+
+  fprintf(stderr, "driverhub: gpio: removed chip '%s'\n",
+          gc->label ? gc->label : "(null)");
+}
+
+int devm_gpiochip_add_data(struct device* dev, struct gpio_chip* gc,
+                           void* data) {
+  (void)dev;
+  return gpiochip_add_data(gc, data);
+}
+
+// Query API for the host demo / test infrastructure.
+int driverhub_gpiochip_count(void) {
+  std::lock_guard<std::mutex> lock(g_gpio_mu);
+  return static_cast<int>(registered_chips().size());
+}
+
+struct gpio_chip* driverhub_gpiochip_get(int index) {
+  std::lock_guard<std::mutex> lock(g_gpio_mu);
+  auto& chips = registered_chips();
+  if (index < 0 || index >= static_cast<int>(chips.size())) return nullptr;
+  return chips[static_cast<size_t>(index)];
 }
 
 }  // extern "C"

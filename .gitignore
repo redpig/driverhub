@@ -9,6 +9,7 @@ tests/modinfo_parser_test
 tests/dt_rtc_test
 tests/symbol_registry_test
 tests/loader_test
+tests/bootfs_gpio_demo
 
 # Editor files
 *.swp

@@ -22,6 +22,7 @@
 #include "src/shim/subsystem/drm.h"
 #include "src/shim/subsystem/fs.h"
 #include "src/shim/subsystem/gpio.h"
+#include "src/shim/include/linux/gpio/driver.h"
 #include "src/shim/subsystem/i2c.h"
 #include "src/shim/subsystem/input.h"
 #include "src/shim/subsystem/spi.h"
@@ -297,6 +298,10 @@ void SymbolRegistry::RegisterKmiSymbols() {
   REGISTER_SYMBOL(gpiod_get_value);
   REGISTER_SYMBOL(gpiod_set_value);
   REGISTER_SYMBOL(gpiod_to_irq);
+  // GPIO chip (controller/provider) API.
+  REGISTER_SYMBOL(gpiochip_add_data);
+  REGISTER_SYMBOL(gpiochip_remove);
+  REGISTER_SYMBOL(devm_gpiochip_add_data);
 
   // USB subsystem
   REGISTER_SYMBOL(usb_register_driver);
