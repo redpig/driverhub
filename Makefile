@@ -117,12 +117,16 @@ EXPORT_KO := tests/export_module.ko
 IMPORT_KO := tests/import_module.ko
 GPIO_KO := tests/gpio_test_module.ko
 RTC_CMOS_KO := tests/rtc_cmos.ko
+DATA_EXPORT_KO := tests/data_export_module.ko
+DATA_IMPORT_KO := tests/data_import_module.ko
 RTC_OPS_TEST := tests/rtc_ops_test
 DT_RTC_TEST := tests/dt_rtc_test
 DEP_SORT_TEST := tests/dependency_sort_test
 MODINFO_TEST := tests/modinfo_parser_test
+SYMREG_TEST := tests/symbol_registry_test
+LOADER_TEST := tests/loader_test
 
-.PHONY: all clean test test-rtc test-rtc-cmos test-gki test-rtc-ops test-dt-rtc test-intermodule test-gpio test-dep-sort test-modinfo test-all
+.PHONY: all clean test test-rtc test-rtc-cmos test-gki test-rtc-ops test-dt-rtc test-intermodule test-gpio test-dep-sort test-modinfo test-symreg test-loader test-all
 
 all: $(TARGET) $(GKI_TARGET)
 
@@ -156,7 +160,13 @@ test-dep-sort: $(DEP_SORT_TEST)
 test-modinfo: $(MODINFO_TEST)
 	./$(MODINFO_TEST)
 
-test-all: test test-rtc test-rtc-ops test-dt-rtc test-intermodule test-gpio test-dep-sort test-modinfo test-gki
+test-symreg: $(SYMREG_TEST)
+	./$(SYMREG_TEST)
+
+test-loader: $(LOADER_TEST) $(TEST_KO) $(EXPORT_KO) $(IMPORT_KO) $(DATA_EXPORT_KO) $(DATA_IMPORT_KO)
+	./$(LOADER_TEST)
+
+test-all: test test-rtc test-rtc-ops test-dt-rtc test-intermodule test-gpio test-dep-sort test-modinfo test-symreg test-loader test-gki
 	@echo ""
 	@echo "=== All tests passed ==="
 
@@ -173,6 +183,12 @@ $(IMPORT_KO): tests/import_module.c
 	$(CC) -c -o $@ $< $(SHIM_INCLUDES) -fno-stack-protector -fno-pie
 
 $(GPIO_KO): tests/gpio_test_module.c
+	$(CC) -c -o $@ $< $(SHIM_INCLUDES) -fno-stack-protector -fno-pie
+
+$(DATA_EXPORT_KO): tests/data_export_module.c
+	$(CC) -c -o $@ $< $(SHIM_INCLUDES) -fno-stack-protector -fno-pie
+
+$(DATA_IMPORT_KO): tests/data_import_module.c
 	$(CC) -c -o $@ $< $(SHIM_INCLUDES) -fno-stack-protector -fno-pie
 
 $(RTC_CMOS_KO): tests/rtc_cmos_module.c
@@ -194,6 +210,12 @@ $(RTC_OPS_TEST): tests/rtc_ops_test.cc $(LIB_OBJS)
 $(DT_RTC_TEST): tests/dt_rtc_test.cc $(LIB_OBJS)
 	$(CXX) $(TEST_CXXFLAGS) $(LDFLAGS) -o $@ $^ -lgtest -lpthread
 
+$(SYMREG_TEST): tests/symbol_registry_test.cc $(LIB_OBJS)
+	$(CXX) $(TEST_CXXFLAGS) $(LDFLAGS) -o $@ $^ -lgtest -lgtest_main -lpthread
+
+$(LOADER_TEST): tests/loader_test.cc $(LIB_OBJS)
+	$(CXX) $(TEST_CXXFLAGS) $(LDFLAGS) -o $@ $^ -lgtest -lgtest_main -lpthread
+
 $(TARGET): $(OBJS)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ -lpthread
 
@@ -209,4 +231,6 @@ $(GKI_TARGET): $(GKI_OBJS)
 clean:
 	rm -f $(OBJS) $(GKI_OBJS) $(LIB_OBJS) $(TARGET) $(GKI_TARGET) \
 		$(TEST_KO) $(RTC_TEST_KO) $(EXPORT_KO) $(IMPORT_KO) $(GPIO_KO) \
-		$(RTC_OPS_TEST) $(DT_RTC_TEST) $(DEP_SORT_TEST) $(MODINFO_TEST)
+		$(DATA_EXPORT_KO) $(DATA_IMPORT_KO) \
+		$(RTC_OPS_TEST) $(DT_RTC_TEST) $(DEP_SORT_TEST) $(MODINFO_TEST) \
+		$(SYMREG_TEST) $(LOADER_TEST)

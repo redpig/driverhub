@@ -274,6 +274,79 @@ are buffered and returned on the first `ListEntries()` call.
 2. Starnix translates watcher events to netlink uevents for its containers
 3. `udev` in Starnix discovers DriverHub devices automatically
 
+## Starnix Internals (as of 2026-03)
+
+Understanding Starnix's current architecture is critical for integration.
+
+### Starnix sysfs Implementation
+
+Starnix's sysfs is implemented in Rust at `src/starnix/kernel/core/fs/sysfs/`:
+- `fs.rs` — filesystem mounting, lazy init, top-level directories
+- `device_directory.rs` — per-device sysfs entries (dev, uevent, queue)
+- `kernel_directory.rs` — `/sys/kernel` entries
+- `power_directory.rs` — `/sys/power` entries
+- `cpu_class_directory.rs` — `/sys/devices/system/cpu` entries
+
+The sysfs init creates directories for `/sys/fs`, `/sys/block`,
+`/sys/bus` (mmc, platform, pci), `/sys/class` (backlight, bdi, mmc_host,
+net), `/sys/dev`, `/sys/firmware`, `/sys/kernel`, `/sys/power`,
+`/sys/leds`, `/sys/module`, and `/sys/devices`. **Many entries are stubs**
+(marked with `bug_ref` macros), meaning the surface area is limited and
+actively being expanded.
+
+### Device Subsystem
+
+Starnix has a device subsystem at `src/starnix/kernel/core/device/`:
+- `registry.rs` — central `DeviceRegistry` for char/block devices
+- `kobject.rs` — Linux-like kobject abstraction
+- `kobject_store.rs` — hierarchical KObject storage backing sysfs
+
+The `DeviceRegistry` manages device registration, major/minor assignment,
+and sysfs population. The `KObjectStore` organizes devices into buses
+(mmc, platform, pci) and classes (block, thermal, graphics, input,
+memory, network, etc.).
+
+### No External Injection Mechanism
+
+**There is no public FIDL protocol for external Fuchsia components to
+inject entries into Starnix's sysfs or procfs.** The `DeviceRegistry` and
+`KObjectStore` are internal Rust APIs within the Starnix process. This
+means the `fuchsia.driverhub.DeviceFs` protocol proposed here would be
+a new capability class for Fuchsia — the first external sysfs provider.
+
+### How Starnix Currently Gets Hardware Info
+
+Starnix obtains hardware information through:
+1. **FIDL capability routing**: `fuchsia.hardware.*` protocols from DFv2
+   drivers are routed into the Starnix container's namespace
+2. **Internal shim code**: Starnix kernel code consumes FIDL protocols
+   and surfaces them as Linux-compatible device nodes
+3. **Remote Binder**: For Android HALs, translates Binder IPC to FIDL
+   calls, enabling Android HAL services to run as native Fuchsia
+   components while remaining callable from Android processes in Starnix
+
+### Integration Strategy
+
+Given that Starnix has no external sysfs injection, we have two options:
+
+**Option A (Recommended): New FIDL protocol**
+- DriverHub exposes `fuchsia.driverhub.DeviceFs`
+- Starnix adds a new filesystem plugin that consumes this protocol
+- Devices appear under `/sys/devices/platform/driverhub/`
+- Cleanest separation; no modifications to Starnix's core sysfs
+
+**Option B: Starnix kernel module**
+- Write a Rust module inside Starnix that consumes a FIDL protocol
+  and registers devices through `DeviceRegistry` directly
+- Devices appear in the native sysfs hierarchy (e.g., `/sys/class/rtc/`)
+- More natural to Linux binaries, but tighter coupling to Starnix internals
+- Would need `Weak<dyn BlockDeviceInfo>` implementations for block devices
+
+**Recommended approach**: Start with Option A (cleaner, less Starnix
+modification), then migrate to Option B for specific device classes where
+Linux userspace expects exact sysfs paths (e.g., WiFi tools expect
+`/sys/class/net/wlan0/`).
+
 ## Design Considerations
 
 ### Why FIDL and not shared memory?
@@ -292,6 +365,13 @@ these kernel-internal APIs. The two systems are complementary:
 - **DriverHub**: runs kernel-space code (.ko) with kernel API shims
 - **Starnix**: runs user-space code (Linux binaries) with syscall shims
 
+### Why not use Remote Binder?
+
+Remote Binder bridges Android AIDL HAL interfaces, not Linux kernel
+sysfs/procfs. Linux userspace tools (firmware loaders, `lspci`, `lsusb`,
+`iw`) interact through filesystem APIs, not Binder. The DeviceFs approach
+preserves this standard Linux interface.
+
 ### What about existing Fuchsia drivers?
 
 DriverHub-loaded .ko modules expose hardware to Fuchsia via DFv2 bind rules
@@ -303,6 +383,6 @@ Both views of the same hardware can coexist.
 
 Starnix already has synthetic sysfs entries for CPU info, memory, etc.
 DriverHub devices should be mounted under a subtree (e.g.,
-`/sys/devices/platform/driverhub/`) to avoid collisions. Alternatively,
-Starnix can be taught to delegate specific sysfs paths to external
-providers via a mount-like mechanism.
+`/sys/devices/platform/driverhub/`) to avoid collisions. For specific
+device classes that Linux tools expect at exact paths, Option B
+(Starnix kernel module) integrates more naturally.
