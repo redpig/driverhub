@@ -76,6 +76,26 @@ std::unique_ptr<LoadedModule> ModuleLoader::Load(std::string_view name,
     return nullptr;
   }
 
+  // Validate ELF machine type matches the running architecture.
+#if defined(__aarch64__)
+  constexpr uint16_t kExpectedMachine = EM_AARCH64;
+  constexpr const char* kExpectedArch = "aarch64";
+#elif defined(__x86_64__)
+  constexpr uint16_t kExpectedMachine = EM_X86_64;
+  constexpr const char* kExpectedArch = "x86_64";
+#else
+  constexpr uint16_t kExpectedMachine = 0;
+  constexpr const char* kExpectedArch = "unknown";
+#endif
+  if (kExpectedMachine != 0 && ehdr->e_machine != kExpectedMachine) {
+    fprintf(stderr,
+            "driverhub: %.*s: wrong architecture (ELF machine=%u, "
+            "expected %s/%u)\n",
+            (int)name.size(), name.data(), ehdr->e_machine,
+            kExpectedArch, kExpectedMachine);
+    return nullptr;
+  }
+
   // Parse section headers.
   if (ehdr->e_shoff == 0 || ehdr->e_shnum == 0) {
     fprintf(stderr, "driverhub: %.*s: no section headers\n",

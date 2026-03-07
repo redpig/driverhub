@@ -246,18 +246,22 @@ zx_status_t ManagedProcess::InjectShimLibrary() {
   size_t total_size = vaddr_max - vaddr_min;
 
   // Allocate a sub-VMAR in the child process for the entire library span.
-  // Use ZX_VM_OFFSET_IS_UPPER_LIMIT to place in low address space for
-  // -mcmodel=small compatibility (addresses must fit in 32-bit signed).
+  // On x86_64, use ZX_VM_OFFSET_IS_UPPER_LIMIT to place in low address
+  // space for -mcmodel=small compatibility (addresses < 2GB).
+  // On aarch64, GKI uses -mcmodel=large so any address works.
   zx_vaddr_t child_region_base = 0;
   zx::vmar child_sub_vmar;
-  constexpr uint64_t kLow2GB = 0x80000000ULL;
 
+#if defined(__x86_64__)
+  constexpr uint64_t kLow2GB = 0x80000000ULL;
   status = root_vmar_.allocate(
       ZX_VM_CAN_MAP_READ | ZX_VM_CAN_MAP_WRITE | ZX_VM_CAN_MAP_EXECUTE |
           ZX_VM_CAN_MAP_SPECIFIC | ZX_VM_OFFSET_IS_UPPER_LIMIT,
       kLow2GB, total_size, &child_sub_vmar, &child_region_base);
-  if (status != ZX_OK) {
-    // Fall back to default placement if low-address allocation fails.
+  if (status != ZX_OK)
+#endif
+  {
+    // Default placement (aarch64 primary path, x86_64 fallback).
     status = root_vmar_.allocate(
         ZX_VM_CAN_MAP_READ | ZX_VM_CAN_MAP_WRITE | ZX_VM_CAN_MAP_EXECUTE |
             ZX_VM_CAN_MAP_SPECIFIC,
@@ -667,7 +671,8 @@ zx_status_t ManagedProcess::LoadModule(const uint8_t* data, size_t size,
   }
 
   // Map the VMO into the child's VMAR to determine the base address.
-  // Try low address space first for -mcmodel=small compatibility.
+  // On x86_64, try low address space first for -mcmodel=small.
+  // On aarch64, any address is fine (-mcmodel=large).
   status = module_vmo.replace_as_executable(zx::resource(), &module_vmo);
   if (status != ZX_OK) {
     fprintf(stderr,
@@ -677,13 +682,18 @@ zx_status_t ManagedProcess::LoadModule(const uint8_t* data, size_t size,
   }
 
   zx_vaddr_t child_base = 0;
-  constexpr uint64_t kLow2GB = 0x80000000ULL;
-  status = root_vmar_.map(
-      ZX_VM_PERM_READ | ZX_VM_PERM_WRITE | ZX_VM_PERM_EXECUTE |
-          ZX_VM_OFFSET_IS_UPPER_LIMIT,
-      kLow2GB, module_vmo, 0, total_alloc, &child_base);
-  if (status != ZX_OK) {
-    // Fall back to default placement.
+#if defined(__x86_64__)
+  {
+    constexpr uint64_t kLow2GB = 0x80000000ULL;
+    status = root_vmar_.map(
+        ZX_VM_PERM_READ | ZX_VM_PERM_WRITE | ZX_VM_PERM_EXECUTE |
+            ZX_VM_OFFSET_IS_UPPER_LIMIT,
+        kLow2GB, module_vmo, 0, total_alloc, &child_base);
+  }
+  if (status != ZX_OK)
+#endif
+  {
+    // Default placement (aarch64 primary path, x86_64 fallback).
     status = root_vmar_.map(
         ZX_VM_PERM_READ | ZX_VM_PERM_WRITE | ZX_VM_PERM_EXECUTE,
         0, module_vmo, 0, total_alloc, &child_base);

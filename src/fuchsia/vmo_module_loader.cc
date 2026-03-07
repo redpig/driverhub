@@ -53,18 +53,17 @@ MemoryAllocation* VmoAllocator::Allocate(size_t alloc_size) {
     return nullptr;
   }
 
-  // Map the VMO into the low 4GB of the address space.
+  // Map the VMO into the process address space.
   //
-  // Linux .ko modules compiled with -mcmodel=small (the default) use
-  // R_X86_64_32 / R_X86_64_32S relocations that require absolute addresses
-  // to fit in 32 bits. On Fuchsia PIE processes, the default VMAR allocation
-  // places mappings at high addresses (>4GB), causing 32-bit truncation.
+  // On x86_64, Linux .ko modules compiled with -mcmodel=small (the default)
+  // use R_X86_64_32/R_X86_64_32S relocations requiring addresses < 2GB.
+  // We use ZX_VM_OFFSET_IS_UPPER_LIMIT to request low-address placement.
   //
-  // We use ZX_VM_OFFSET_IS_UPPER_LIMIT to request placement below 4GB,
-  // similar to how Fuchsia's restricted_machine library handles low-address
-  // code placement.
+  // On aarch64, GKI modules use -mcmodel=large and position-independent
+  // relocations (ADRP/ADD), so any address is fine.
   zx_vaddr_t mapped_addr = 0;
 
+#if defined(__x86_64__)
   // Get root VMAR info to compute the offset for the upper limit.
   zx_info_vmar_t vmar_info;
   status = zx::vmar::root_self()->get_info(
@@ -74,9 +73,6 @@ MemoryAllocation* VmoAllocator::Allocate(size_t alloc_size) {
     return nullptr;
   }
 
-  // Compute the offset within the root VMAR that corresponds to the 4GB mark.
-  // ZX_VM_OFFSET_IS_UPPER_LIMIT tells the kernel to place the mapping at an
-  // address below (vmar_base + offset).
   // R_X86_64_32S sign-extends: addresses must be < 2GB for mcmodel=small.
   constexpr uint64_t kLow2GB = 0x80000000ULL;
   bool try_low = (kLow2GB > vmar_info.base + alloc_size);
@@ -96,8 +92,11 @@ MemoryAllocation* VmoAllocator::Allocate(size_t alloc_size) {
     }
   }
 
-  if (!try_low) {
-    // Fall back to default allocation (may be >4GB).
+  if (!try_low)
+#endif  // __x86_64__
+  {
+    // Default allocation — no address constraint.
+    // On aarch64 this is the only path; on x86_64 it's the fallback.
     status = zx::vmar::root_self()->map(
         ZX_VM_PERM_READ | ZX_VM_PERM_WRITE | ZX_VM_PERM_EXECUTE,
         0, vmo, 0, alloc_size, &mapped_addr);

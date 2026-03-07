@@ -2,16 +2,20 @@
 # scripts/test-bootfs-gpio-qemu.sh
 #
 # End-to-end test: cross-compile the DriverHub GPIO bootfs demo for
-# Fuchsia x86_64, build a ZBI, boot in QEMU, and verify all tests pass.
+# Fuchsia, build a ZBI, boot in QEMU, and verify all tests pass.
+#
+# Supports both x86_64 (default) and aarch64 architectures.
 #
 # Prerequisites:
 #   - Fuchsia IDK extracted at third_party/fuchsia-idk/
 #   - Fuchsia Clang at third_party/clang/
-#   - Fuchsia product bundle at /tmp/fuchsia-pb/ (see docs/fuchsia-env-setup.md)
-#   - Host build completed (make all) so .ko modules are built
+#   - Fuchsia product bundle (see docs/fuchsia-env-setup.md):
+#       x64:   /tmp/fuchsia-pb/system_a/fuchsia-orig.zbi + linux-x86-boot-shim.bin
+#       arm64: /tmp/fuchsia-pb-arm64/system_a/fuchsia-orig.zbi
 #
 # Usage:
-#   ./scripts/test-bootfs-gpio-qemu.sh
+#   ./scripts/test-bootfs-gpio-qemu.sh          # x86_64 (default)
+#   ./scripts/test-bootfs-gpio-qemu.sh arm64     # aarch64
 #
 # The script exits 0 if all 8 GPIO tests pass in the QEMU serial output.
 
@@ -21,39 +25,97 @@ DRIVERHUB="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$DRIVERHUB"
 
 # ---------------------------------------------------------------------------
+# Architecture selection
+# ---------------------------------------------------------------------------
+ARCH="${1:-x64}"
+
+case "$ARCH" in
+  x64|x86_64|x86)
+    ARCH=x64
+    TARGET_TRIPLE=x86_64-unknown-fuchsia
+    IDK_ARCH=x64
+    CLANG_ARCH=x86_64-unknown-fuchsia
+    QEMU_BIN=qemu-system-x86_64
+    QEMU_MACHINE="-machine q35 -cpu Haswell,+smap,-check,-fsgsbase"
+    QEMU_KERNEL_FLAG="-kernel"
+    PB_DIR=/tmp/fuchsia-pb
+    BOOT_KERNEL=linux-x86-boot-shim.bin
+    NEEDS_KERNEL=true
+    ;;
+  arm64|aarch64)
+    ARCH=arm64
+    TARGET_TRIPLE=aarch64-unknown-fuchsia
+    IDK_ARCH=arm64
+    CLANG_ARCH=aarch64-unknown-fuchsia
+    QEMU_BIN=qemu-system-aarch64
+    QEMU_MACHINE="-machine virt,gic-version=3 -cpu cortex-a53"
+    QEMU_KERNEL_FLAG="-kernel"
+    PB_DIR=/tmp/fuchsia-pb-arm64
+    BOOT_KERNEL=""
+    NEEDS_KERNEL=false
+    ;;
+  *)
+    echo "Usage: $0 [x64|arm64]"
+    exit 1
+    ;;
+esac
+
+echo "=== DriverHub Bootfs GPIO QEMU Test ($ARCH) ==="
+echo ""
+
+# ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 CXX=third_party/clang/bin/clang++
 CC=third_party/clang/bin/clang
 IDK=third_party/fuchsia-idk
-SYSROOT=$IDK/arch/x64/sysroot
-CLANG_RTLIB=third_party/clang/lib/x86_64-unknown-fuchsia
-IDK_LIBS=$IDK/arch/x64/lib
+SYSROOT=$IDK/arch/$IDK_ARCH/sysroot
+CLANG_RTLIB=third_party/clang/lib/$CLANG_ARCH
+IDK_LIBS=$IDK/arch/$IDK_ARCH/lib
 ZBI_TOOL=$IDK/tools/x64/zbi
-QEMU=$IDK/tools/x64/qemu_internal/bin/qemu-system-x86_64
+QEMU=$IDK/tools/x64/qemu_internal/bin/$QEMU_BIN
 
-ORIG_ZBI=/tmp/fuchsia-pb/system_a/fuchsia-orig.zbi
-KERNEL=/tmp/fuchsia-pb/system_a/linux-x86-boot-shim.bin
+ORIG_ZBI=$PB_DIR/system_a/fuchsia-orig.zbi
 
-OBJDIR=/tmp/bootfs-gpio-obj
-OUTPUT_ZBI=/tmp/fuchsia-bootfs-gpio.zbi
-OUTPUT_BIN=/tmp/bootfs-gpio-demo
-OUTPUT_KO=/tmp/gpio_controller_module.ko
-QEMU_LOG=/tmp/qemu-gpio-output.log
+OBJDIR=/tmp/bootfs-gpio-obj-$ARCH
+OUTPUT_ZBI=/tmp/fuchsia-bootfs-gpio-$ARCH.zbi
+OUTPUT_BIN=/tmp/bootfs-gpio-demo-$ARCH
+OUTPUT_KO=/tmp/gpio_controller_module-$ARCH.ko
+QEMU_LOG=/tmp/qemu-gpio-output-$ARCH.log
 
 # ---------------------------------------------------------------------------
 # Preflight checks
 # ---------------------------------------------------------------------------
 echo "=== Preflight checks ==="
 
-for f in "$CXX" "$CC" "$ZBI_TOOL" "$QEMU" "$ORIG_ZBI" "$KERNEL"; do
+PREFLIGHT_FILES=("$CXX" "$CC" "$ZBI_TOOL" "$QEMU" "$ORIG_ZBI")
+if [ "$NEEDS_KERNEL" = true ]; then
+  KERNEL_PATH="$PB_DIR/system_a/$BOOT_KERNEL"
+  PREFLIGHT_FILES+=("$KERNEL_PATH")
+fi
+
+for f in "${PREFLIGHT_FILES[@]}"; do
   if [ ! -f "$f" ]; then
     echo "ERROR: missing $f"
-    echo "See docs/fuchsia-env-setup.md for setup instructions."
+    if [[ "$f" == *fuchsia-pb* ]]; then
+      echo ""
+      echo "To download the $ARCH product bundle:"
+      if [ "$ARCH" = "arm64" ]; then
+        echo "  SDK_VERSION=\$(cat third_party/fuchsia-idk/meta/manifest.json | python3 -c \"import json,sys; print(json.load(sys.stdin)['id'])\")"
+        echo "  # Find the build ID from product_bundles.json, then:"
+        echo "  mkdir -p /tmp/fuchsia-pb-arm64/system_a"
+        echo "  curl -o /tmp/fuchsia-pb-arm64/system_a/fuchsia.zbi \\"
+        echo "    'https://storage.googleapis.com/fuchsia-public-artifacts-release/builds/<BUILD_ID>/product_bundles/minimal.arm64/system_a/fuchsia.zbi'"
+        echo "  cp /tmp/fuchsia-pb-arm64/system_a/fuchsia.zbi /tmp/fuchsia-pb-arm64/system_a/fuchsia-orig.zbi"
+      else
+        echo "  See docs/fuchsia-env-setup.md for setup instructions."
+      fi
+    fi
     exit 1
   fi
 done
 
+echo "  Architecture:    $ARCH ($TARGET_TRIPLE)"
 echo "  Toolchain:       $($CXX --version 2>&1 | head -1)"
 echo "  ZBI tool:        $ZBI_TOOL"
 echo "  QEMU:            $QEMU"
@@ -70,7 +132,7 @@ for d in $(find "$IDK/pkg" -name include -type d 2>/dev/null); do
   IDK_INCS="$IDK_INCS -I$d"
 done
 
-CXXFLAGS="--target=x86_64-unknown-fuchsia --sysroot=$SYSROOT \
+CXXFLAGS="--target=$TARGET_TRIPLE --sysroot=$SYSROOT \
   -ffuchsia-api-level=30 -std=c++17 -Wall -g \
   -I. -Isrc/shim/include -fno-pie -fPIC -D__Fuchsia__ $IDK_INCS"
 
@@ -80,7 +142,7 @@ echo "  Found $(echo $IDK_INCS | wc -w) IDK package include dirs"
 # Step 2: Cross-compile all sources
 # ---------------------------------------------------------------------------
 echo ""
-echo "=== Step 2: Cross-compiling for x86_64-unknown-fuchsia ==="
+echo "=== Step 2: Cross-compiling for $TARGET_TRIPLE ==="
 
 mkdir -p "$OBJDIR"
 rm -f "$OBJDIR"/*.o
@@ -142,7 +204,7 @@ done
 echo "  Compiled $COMPILED core sources"
 
 # Compile the Zircon zx library from IDK sources.
-ZX_FLAGS="--target=x86_64-unknown-fuchsia --sysroot=$SYSROOT \
+ZX_FLAGS="--target=$TARGET_TRIPLE --sysroot=$SYSROOT \
   -ffuchsia-api-level=30 -std=c++17 -g -fPIC $IDK_INCS"
 
 ZX_COUNT=0
@@ -164,7 +226,7 @@ echo "  Compiled bootfs_gpio_demo.cc"
 echo ""
 echo "=== Step 3: Linking ==="
 
-$CXX --target=x86_64-unknown-fuchsia --sysroot="$SYSROOT" -ffuchsia-api-level=30 \
+$CXX --target="$TARGET_TRIPLE" --sysroot="$SYSROOT" -ffuchsia-api-level=30 \
   -L"$CLANG_RTLIB" \
   -L"$IDK_LIBS" \
   -L"$SYSROOT/lib" \
@@ -180,7 +242,7 @@ echo "  $(file "$OUTPUT_BIN")"
 echo ""
 echo "=== Step 4: Cross-compiling GPIO controller .ko ==="
 
-$CC --target=x86_64-unknown-fuchsia -c -o "$OUTPUT_KO" \
+$CC --target="$TARGET_TRIPLE" -c -o "$OUTPUT_KO" \
   tests/gpio_controller_module.c -Isrc/shim/include \
   -fno-stack-protector -fno-pie 2>&1
 
@@ -210,23 +272,32 @@ echo "  Built: $OUTPUT_ZBI ($(du -h "$OUTPUT_ZBI" | cut -f1))"
 # Step 6: Boot QEMU
 # ---------------------------------------------------------------------------
 echo ""
-echo "=== Step 6: Booting Fuchsia QEMU ==="
+echo "=== Step 6: Booting Fuchsia QEMU ($ARCH) ==="
 echo "  Timeout: 90 seconds"
 echo ""
 
-timeout 90 "$QEMU" \
-  -kernel "$KERNEL" \
-  -initrd "$OUTPUT_ZBI" \
-  -m 4096 \
-  -smp 2 \
-  -nographic \
-  -no-reboot \
-  -machine q35 \
-  -cpu Haswell,+smap,-check,-fsgsbase \
-  -serial stdio \
-  -monitor none \
-  -net none \
-  2>&1 | tee "$QEMU_LOG" || true
+# Build QEMU command.
+QEMU_CMD=(
+  timeout 90 "$QEMU"
+  $QEMU_MACHINE
+  -m 4096
+  -smp 2
+  -nographic
+  -no-reboot
+  -serial stdio
+  -monitor none
+  -net none
+)
+
+if [ "$NEEDS_KERNEL" = true ]; then
+  # x86_64: separate kernel shim + ZBI as initrd
+  QEMU_CMD+=($QEMU_KERNEL_FLAG "$KERNEL_PATH" -initrd "$OUTPUT_ZBI")
+else
+  # arm64: ZBI is self-bootable, use it as -kernel directly
+  QEMU_CMD+=($QEMU_KERNEL_FLAG "$OUTPUT_ZBI")
+fi
+
+"${QEMU_CMD[@]}" 2>&1 | tee "$QEMU_LOG" || true
 
 # ---------------------------------------------------------------------------
 # Step 7: Verify results
@@ -237,7 +308,7 @@ echo ""
 
 # Extract the results section from QEMU output.
 if grep -q "Bootfs GPIO Provider Results" "$QEMU_LOG"; then
-  echo "--- Test output ---"
+  echo "--- Test output ($ARCH) ---"
   grep -E "bootfs-gpio|driverhub-gpio|GPIO|Chip|Pin|Composite|Results|PASS|FAIL|Module loading" "$QEMU_LOG" \
     | sed 's/.*> //' | grep -v "^$"
   echo "---"
@@ -251,10 +322,10 @@ if grep -q "Bootfs GPIO Provider Results" "$QEMU_LOG"; then
   echo ""
 
   if [ "$FAIL_COUNT" -eq 0 ] && [ "$PASS_COUNT" -ge 8 ]; then
-    echo "=== ALL TESTS PASSED ==="
+    echo "=== ALL TESTS PASSED ($ARCH) ==="
     exit 0
   else
-    echo "=== TESTS FAILED ==="
+    echo "=== TESTS FAILED ($ARCH) ==="
     exit 1
   fi
 else
