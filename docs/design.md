@@ -4,10 +4,15 @@
 
 DriverHub is a compatibility layer that enables Fuchsia's Driver Framework v2
 (DFv2) to load and use Android Linux GKI (Generic Kernel Image) kernel modules.
-It achieves this by acting as a DFv2 bus driver that loads `.ko` ELF relocatable
-objects via `elfldltl`, resolves their symbols against a shim library
-implementing the Linux KMI (Kernel Module Interface), and exposes each loaded
-module as an independent DFv2 child node.
+It acts as a **Fuchsia component runner** for `.ko` files — implementing
+`fuchsia.component.runner.ComponentRunner` to launch each module (or colocation
+group) in its own process, with a shared KMI shim library
+(`libdriverhub_kmi.so`) and a central FIDL-based symbol registry for
+cross-module `EXPORT_SYMBOL` resolution.
+
+> **Note**: See [`docs/runner-design.md`](runner-design.md) for the full runner
+> architecture design, including colocation groups, the symbol proxy FIDL
+> protocol, and migration plan.
 
 ## Goals
 
