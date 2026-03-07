@@ -29,6 +29,14 @@
 #include "src/shim/subsystem/block.h"
 #include "src/shim/subsystem/scsi.h"
 #include "src/shim/kernel/clk.h"
+#include "src/shim/subsystem/thermal.h"
+#include "src/shim/subsystem/iio.h"
+#include "src/shim/subsystem/pinctrl.h"
+#include "src/shim/subsystem/watchdog.h"
+#include "src/shim/subsystem/nvmem.h"
+#include "src/shim/subsystem/power_supply.h"
+#include "src/shim/subsystem/pwm.h"
+#include "src/shim/subsystem/led.h"
 
 // Forward declarations for RTC, timer, and ABI-compat shim symbols.
 extern "C" {
@@ -565,6 +573,108 @@ void SymbolRegistry::RegisterKmiSymbols() {
   REGISTER_SYMBOL(pm_runtime_get_noresume);
   REGISTER_SYMBOL(pm_runtime_put_noidle);
   REGISTER_SYMBOL(pm_runtime_suspended);
+
+  // Thermal subsystem
+  REGISTER_SYMBOL(thermal_zone_device_register);
+  REGISTER_SYMBOL(thermal_zone_device_register_with_trips);
+  REGISTER_SYMBOL(devm_thermal_of_zone_register);
+  REGISTER_SYMBOL(thermal_zone_device_unregister);
+  REGISTER_SYMBOL(thermal_zone_device_update);
+  REGISTER_SYMBOL(thermal_zone_device_priv);
+  REGISTER_SYMBOL(thermal_cooling_device_register);
+  REGISTER_SYMBOL(devm_thermal_of_cooling_device_register);
+  REGISTER_SYMBOL(thermal_cooling_device_unregister);
+  REGISTER_SYMBOL(hwmon_device_register_with_info);
+  REGISTER_SYMBOL(hwmon_device_unregister);
+  REGISTER_SYMBOL(devm_hwmon_device_register_with_info);
+
+  // IIO (sensors) subsystem
+  REGISTER_SYMBOL(iio_device_alloc);
+  REGISTER_SYMBOL(devm_iio_device_alloc);
+  REGISTER_SYMBOL(iio_device_free);
+  REGISTER_SYMBOL(iio_device_register);
+  REGISTER_SYMBOL(devm_iio_device_register);
+  REGISTER_SYMBOL(iio_device_unregister);
+  REGISTER_SYMBOL(iio_priv);
+  REGISTER_SYMBOL(iio_push_to_buffers_with_timestamp);
+  REGISTER_SYMBOL(devm_iio_trigger_alloc);
+  REGISTER_SYMBOL(devm_iio_trigger_register);
+  REGISTER_SYMBOL(iio_trigger_notify_done);
+
+  // Pin control subsystem
+  REGISTER_SYMBOL(pinctrl_get);
+  REGISTER_SYMBOL(devm_pinctrl_get);
+  REGISTER_SYMBOL(pinctrl_put);
+  REGISTER_SYMBOL(pinctrl_lookup_state);
+  REGISTER_SYMBOL(pinctrl_select_state);
+  REGISTER_SYMBOL(pinctrl_pm_select_default_state);
+  REGISTER_SYMBOL(pinctrl_pm_select_sleep_state);
+  REGISTER_SYMBOL(pinctrl_register);
+  REGISTER_SYMBOL(devm_pinctrl_register);
+  REGISTER_SYMBOL(pinctrl_unregister);
+  REGISTER_SYMBOL(pinctrl_gpio_request);
+  REGISTER_SYMBOL(pinctrl_gpio_free);
+  REGISTER_SYMBOL(pinctrl_gpio_direction_input);
+  REGISTER_SYMBOL(pinctrl_gpio_direction_output);
+
+  // Watchdog subsystem
+  REGISTER_SYMBOL(watchdog_init_timeout);
+  REGISTER_SYMBOL(watchdog_register_device);
+  REGISTER_SYMBOL(devm_watchdog_register_device);
+  REGISTER_SYMBOL(watchdog_unregister_device);
+  REGISTER_SYMBOL(watchdog_set_drvdata);
+  REGISTER_SYMBOL(watchdog_get_drvdata);
+
+  // NVMEM subsystem
+  REGISTER_SYMBOL(nvmem_register);
+  REGISTER_SYMBOL(devm_nvmem_register);
+  REGISTER_SYMBOL(nvmem_unregister);
+  REGISTER_SYMBOL(nvmem_cell_get);
+  REGISTER_SYMBOL(devm_nvmem_cell_get);
+  REGISTER_SYMBOL(nvmem_cell_put);
+  REGISTER_SYMBOL(nvmem_cell_read);
+  REGISTER_SYMBOL(nvmem_cell_write);
+  REGISTER_SYMBOL(nvmem_device_read);
+  REGISTER_SYMBOL(nvmem_device_write);
+
+  // Power supply subsystem
+  REGISTER_SYMBOL(power_supply_register);
+  REGISTER_SYMBOL(devm_power_supply_register);
+  REGISTER_SYMBOL(power_supply_unregister);
+  REGISTER_SYMBOL(power_supply_changed);
+  REGISTER_SYMBOL(power_supply_get_drvdata);
+  REGISTER_SYMBOL(power_supply_set_drvdata);
+  REGISTER_SYMBOL(power_supply_get_by_name);
+  REGISTER_SYMBOL(power_supply_put);
+  REGISTER_SYMBOL(power_supply_get_property);
+
+  // PWM subsystem
+  REGISTER_SYMBOL(pwm_request);
+  REGISTER_SYMBOL(pwm_get);
+  REGISTER_SYMBOL(devm_pwm_get);
+  REGISTER_SYMBOL(pwm_free);
+  REGISTER_SYMBOL(pwm_put);
+  REGISTER_SYMBOL(pwm_config);
+  REGISTER_SYMBOL(pwm_set_polarity);
+  REGISTER_SYMBOL(pwm_enable);
+  REGISTER_SYMBOL(pwm_disable);
+  REGISTER_SYMBOL(pwm_apply_state);
+  REGISTER_SYMBOL(pwm_get_state);
+  REGISTER_SYMBOL(pwmchip_add);
+  REGISTER_SYMBOL(pwmchip_remove);
+  REGISTER_SYMBOL(devm_pwmchip_add);
+
+  // LED subsystem
+  REGISTER_SYMBOL(led_classdev_register);
+  REGISTER_SYMBOL(devm_led_classdev_register);
+  REGISTER_SYMBOL(devm_led_classdev_register_ext);
+  REGISTER_SYMBOL(led_classdev_unregister);
+  REGISTER_SYMBOL(led_set_brightness);
+  REGISTER_SYMBOL(led_update_brightness);
+  REGISTER_SYMBOL(led_blink_set);
+  REGISTER_SYMBOL(led_blink_set_oneshot);
+  REGISTER_SYMBOL(led_trigger_event);
+  REGISTER_SYMBOL(led_trigger_blink);
 
   fprintf(stderr, "driverhub: registered %zu KMI symbols\n", symbols_.size());
 }

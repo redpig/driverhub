@@ -40,7 +40,15 @@ LIB_SRCS := \
 	src/shim/subsystem/fs.cc \
 	src/shim/subsystem/block.cc \
 	src/shim/subsystem/scsi.cc \
-	src/shim/kernel/clk.cc
+	src/shim/kernel/clk.cc \
+	src/shim/subsystem/thermal.cc \
+	src/shim/subsystem/iio.cc \
+	src/shim/subsystem/pinctrl.cc \
+	src/shim/subsystem/watchdog.cc \
+	src/shim/subsystem/nvmem.cc \
+	src/shim/subsystem/power_supply.cc \
+	src/shim/subsystem/pwm.cc \
+	src/shim/subsystem/led.cc
 
 SRCS := src/main.cc $(LIB_SRCS)
 OBJS := $(SRCS:.cc=.o)
@@ -87,7 +95,15 @@ GKI_SRCS := \
 	src/shim/subsystem/fs.cc \
 	src/shim/subsystem/block.cc \
 	src/shim/subsystem/scsi.cc \
-	src/shim/kernel/clk.cc
+	src/shim/kernel/clk.cc \
+	src/shim/subsystem/thermal.cc \
+	src/shim/subsystem/iio.cc \
+	src/shim/subsystem/pinctrl.cc \
+	src/shim/subsystem/watchdog.cc \
+	src/shim/subsystem/nvmem.cc \
+	src/shim/subsystem/power_supply.cc \
+	src/shim/subsystem/pwm.cc \
+	src/shim/subsystem/led.cc
 
 GKI_OBJS := $(GKI_SRCS:.cc=.gki.o)
 GKI_TARGET := driverhub-gki
