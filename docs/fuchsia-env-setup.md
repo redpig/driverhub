@@ -132,6 +132,33 @@ ls -lh /tmp/fuchsia-pb/system_a/
 cp /tmp/fuchsia-pb/system_a/fuchsia.zbi /tmp/fuchsia-pb/system_a/fuchsia-orig.zbi
 ```
 
+### ARM64 Product Bundle
+
+For aarch64 QEMU testing, download the `minimal.arm64` product bundle:
+
+```shell
+# Find the build ID for minimal.arm64
+SDK_VERSION=$(curl -s https://storage.googleapis.com/fuchsia/development/LATEST_LINUX)
+curl -s "https://storage.googleapis.com/fuchsia/development/${SDK_VERSION}/product_bundles.json" \
+  | python3 -c "import json,sys; [print(p['transfer_manifest_url'].split('/')[5]) for p in json.load(sys.stdin) if p['name']=='minimal.arm64']"
+
+# Use the build ID from above
+BUILD_ID=<output from above>
+BASE="https://storage.googleapis.com/fuchsia-public-artifacts-release/builds/${BUILD_ID}/product_bundles/minimal.arm64"
+
+mkdir -p /tmp/fuchsia-pb-arm64/system_a
+
+curl -s -o /tmp/fuchsia-pb-arm64/system_a/fuchsia.zbi "$BASE/system_a/fuchsia.zbi"
+curl -s -o /tmp/fuchsia-pb-arm64/system_a/linux-arm64-boot-shim.bin "$BASE/system_a/linux-arm64-boot-shim.bin"
+
+# Save the original ZBI
+cp /tmp/fuchsia-pb-arm64/system_a/fuchsia.zbi /tmp/fuchsia-pb-arm64/system_a/fuchsia-orig.zbi
+
+ls -lh /tmp/fuchsia-pb-arm64/system_a/
+# fuchsia.zbi                ~20M  (arm64 Zircon Boot Image)
+# linux-arm64-boot-shim.bin  ~288K (Linux arm64 boot shim for QEMU)
+```
+
 ### Optional: Full Product Bundle Download
 
 For a complete product bundle (includes repository, blobs, virtual device

@@ -11,7 +11,7 @@
 #   - Fuchsia Clang at third_party/clang/
 #   - Fuchsia product bundle (see docs/fuchsia-env-setup.md):
 #       x64:   /tmp/fuchsia-pb/system_a/fuchsia-orig.zbi + linux-x86-boot-shim.bin
-#       arm64: /tmp/fuchsia-pb-arm64/system_a/fuchsia-orig.zbi
+#       arm64: /tmp/fuchsia-pb-arm64/system_a/fuchsia-orig.zbi + linux-arm64-boot-shim.bin
 #
 # Usage:
 #   ./scripts/test-bootfs-gpio-qemu.sh          # x86_64 (default)
@@ -48,11 +48,11 @@ case "$ARCH" in
     IDK_ARCH=arm64
     CLANG_ARCH=aarch64-unknown-fuchsia
     QEMU_BIN=qemu-system-aarch64
-    QEMU_MACHINE="-machine virt,gic-version=3 -cpu cortex-a53"
+    QEMU_MACHINE="-machine virt,gic-version=3,virtualization=on -cpu cortex-a53"
     QEMU_KERNEL_FLAG="-kernel"
     PB_DIR=/tmp/fuchsia-pb-arm64
-    BOOT_KERNEL=""
-    NEEDS_KERNEL=false
+    BOOT_KERNEL=linux-arm64-boot-shim.bin
+    NEEDS_KERNEL=true
     ;;
   *)
     echo "Usage: $0 [x64|arm64]"
@@ -101,12 +101,16 @@ for f in "${PREFLIGHT_FILES[@]}"; do
       echo ""
       echo "To download the $ARCH product bundle:"
       if [ "$ARCH" = "arm64" ]; then
-        echo "  SDK_VERSION=\$(cat third_party/fuchsia-idk/meta/manifest.json | python3 -c \"import json,sys; print(json.load(sys.stdin)['id'])\")"
-        echo "  # Find the build ID from product_bundles.json, then:"
+        echo "  # Download the minimal.arm64 product bundle:"
+        echo "  SDK_VERSION=\$(curl -s https://storage.googleapis.com/fuchsia/development/LATEST_LINUX)"
+        echo "  # Get build ID from product_bundles.json:"
+        echo "  curl -s \"https://storage.googleapis.com/fuchsia/development/\${SDK_VERSION}/product_bundles.json\" \\"
+        echo "    | python3 -c \"import json,sys; [print(p['transfer_manifest_url'].split('/')[5]) for p in json.load(sys.stdin) if p['name']=='minimal.arm64']\""
+        echo "  BUILD_ID=<output from above>"
+        echo "  BASE=https://storage.googleapis.com/fuchsia-public-artifacts-release/builds/\${BUILD_ID}/product_bundles/minimal.arm64"
         echo "  mkdir -p /tmp/fuchsia-pb-arm64/system_a"
-        echo "  curl -o /tmp/fuchsia-pb-arm64/system_a/fuchsia.zbi \\"
-        echo "    'https://storage.googleapis.com/fuchsia-public-artifacts-release/builds/<BUILD_ID>/product_bundles/minimal.arm64/system_a/fuchsia.zbi'"
-        echo "  cp /tmp/fuchsia-pb-arm64/system_a/fuchsia.zbi /tmp/fuchsia-pb-arm64/system_a/fuchsia-orig.zbi"
+        echo "  curl -o /tmp/fuchsia-pb-arm64/system_a/fuchsia-orig.zbi \${BASE}/system_a/fuchsia.zbi"
+        echo "  curl -o /tmp/fuchsia-pb-arm64/system_a/linux-arm64-boot-shim.bin \${BASE}/system_a/linux-arm64-boot-shim.bin"
       else
         echo "  See docs/fuchsia-env-setup.md for setup instructions."
       fi
