@@ -15,6 +15,7 @@
 #include "src/fuchsia/module_enumerator.h"
 #include "src/loader/dependency_sort.h"
 #include "src/loader/memory_allocator.h"
+#include "src/loader/modinfo_parser.h"
 #include "src/module_node/module_node.h"
 
 // Platform-specific allocator selection.
@@ -125,18 +126,12 @@ zx_status_t BusDriver::LoadModulesFromDirectory(const std::string& dir_path) {
           entries.size(), dir_path.c_str());
 
   // Step 2: Extract modinfo from each module to build dependency graph.
-  // We do a lightweight parse of each .ko to get its ModuleInfo without
-  // fully loading it yet.
+  // Uses lightweight ELF parser — no allocation, relocation, or execution.
   std::vector<std::pair<std::string, ModuleInfo>> module_infos;
   for (const auto& entry : entries) {
     ModuleInfo info;
     info.name = entry.name;
-    // Quick-load just to extract metadata — the full load happens later.
-    auto loaded = loader_.Load(entry.name, entry.data.data(),
-                               entry.data.size());
-    if (loaded) {
-      info = loaded->info;
-    }
+    ExtractModuleInfo(entry.data.data(), entry.data.size(), &info);
     module_infos.push_back({entry.name, info});
   }
 

@@ -27,6 +27,7 @@ source_set("driverhub-core") {
     "src/dt/dt_provider.cc",
     "src/loader/dependency_sort.cc",
     "src/loader/memory_allocator.cc",
+    "src/loader/modinfo_parser.cc",
     "src/loader/module_loader.cc",
     "src/module_node/module_node.cc",
     "src/shim/kernel/bug.cc",

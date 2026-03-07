@@ -13,6 +13,7 @@ LIB_SRCS := \
 	src/loader/dependency_sort.cc \
 	src/loader/memory_allocator.cc \
 	src/loader/mmap_allocator.cc \
+	src/loader/modinfo_parser.cc \
 	src/fuchsia/module_enumerator.cc \
 	src/symbols/symbol_registry.cc \
 	src/dt/dt_provider.cc \
@@ -57,6 +58,7 @@ GKI_SRCS := \
 	src/loader/dependency_sort.cc \
 	src/loader/memory_allocator.cc \
 	src/loader/mmap_allocator.cc \
+	src/loader/modinfo_parser.cc \
 	src/fuchsia/module_enumerator.cc \
 	src/symbols/symbol_registry.cc \
 	src/dt/dt_provider.cc \

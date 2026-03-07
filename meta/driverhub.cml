@@ -21,6 +21,27 @@
             // Access to the platform device to get MMIO/IRQ resources.
             service: "fuchsia.hardware.platform.device.Service",
         },
+        {
+            // I2C bus access for modules that use i2c_transfer.
+            service: "fuchsia.hardware.i2c.Service",
+            availability: "optional",
+        },
+        {
+            // SPI bus access for modules that use spi_sync.
+            service: "fuchsia.hardware.spi.Service",
+            availability: "optional",
+        },
+        {
+            // GPIO pin access for modules that use gpiod_get/set.
+            service: "fuchsia.hardware.gpio.Service",
+            availability: "optional",
+        },
+        {
+            // Directory containing .ko module files packaged as resources.
+            directory: "pkg",
+            rights: [ "r*" ],
+            path: "/pkg",
+        },
     ],
     expose: [
         {

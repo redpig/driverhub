@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "src/loader/memory_allocator.h"
+#include "src/loader/modinfo_parser.h"
 #include "src/symbols/symbol_registry.h"
 
 // ELF ET_REL loader for Linux .ko kernel modules.
@@ -26,54 +27,6 @@
 namespace driverhub {
 
 namespace {
-
-// Parse null-terminated key=value pairs from the .modinfo section.
-void ParseModinfo(const uint8_t* data, size_t size, ModuleInfo* info) {
-  const char* p = reinterpret_cast<const char*>(data);
-  const char* end = p + size;
-
-  while (p < end) {
-    size_t len = strnlen(p, end - p);
-    if (len == 0) {
-      p++;
-      continue;
-    }
-
-    std::string_view entry(p, len);
-    auto eq = entry.find('=');
-    if (eq != std::string_view::npos) {
-      auto key = entry.substr(0, eq);
-      auto val = entry.substr(eq + 1);
-
-      if (key == "description") {
-        info->description = std::string(val);
-      } else if (key == "author") {
-        info->author = std::string(val);
-      } else if (key == "license") {
-        info->license = std::string(val);
-      } else if (key == "vermagic") {
-        info->vermagic = std::string(val);
-      } else if (key == "depends") {
-        // Comma-separated list of dependencies.
-        std::string deps(val);
-        size_t pos = 0;
-        while (pos < deps.size()) {
-          auto comma = deps.find(',', pos);
-          if (comma == std::string::npos) comma = deps.size();
-          auto dep = deps.substr(pos, comma - pos);
-          if (!dep.empty()) {
-            info->depends.push_back(dep);
-          }
-          pos = comma + 1;
-        }
-      } else if (key == "alias") {
-        info->aliases.push_back(std::string(val));
-      }
-    }
-
-    p += len + 1;  // Skip past null terminator.
-  }
-}
 
 // Represents a section loaded into executable/writable memory.
 struct LoadedSection {
