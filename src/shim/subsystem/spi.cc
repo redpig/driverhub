@@ -10,6 +10,8 @@
 #include <mutex>
 #include <vector>
 
+#include "src/fuchsia/service_bridge.h"
+
 // SPI subsystem shim.
 //
 // On Fuchsia, spi_sync would translate to fuchsia.hardware.spi/Device FIDL
@@ -29,10 +31,16 @@ int spi_register_driver(struct spi_driver* driver) {
   g_spi_drivers.push_back(driver);
   fprintf(stderr, "driverhub: spi: registered driver '%s'\n",
           driver->driver.name);
+
+  // Notify service bridge to create DFv2 child node with SPI service offer.
+  dh_bridge_spi_driver_added(driver);
+
   return 0;
 }
 
 void spi_unregister_driver(struct spi_driver* driver) {
+  // Notify service bridge to remove DFv2 child node.
+  dh_bridge_spi_driver_removed(driver);
   std::lock_guard<std::mutex> lock(g_spi_mu);
   g_spi_drivers.erase(
       std::remove(g_spi_drivers.begin(), g_spi_drivers.end(), driver),

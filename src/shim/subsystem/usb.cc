@@ -11,6 +11,8 @@
 #include <mutex>
 #include <vector>
 
+#include "src/fuchsia/service_bridge.h"
+
 // USB subsystem shim.
 //
 // Maintains a registry of USB drivers. On Fuchsia, usb_register_driver would
@@ -44,10 +46,16 @@ int usb_register_driver(struct usb_driver* driver) {
   std::lock_guard<std::mutex> lock(g_usb_mu);
   g_usb_drivers.push_back(driver);
   fprintf(stderr, "driverhub: usb: registered driver '%s'\n", driver->name);
+
+  // Notify service bridge to create DFv2 child node with USB service offer.
+  dh_bridge_usb_driver_added(driver);
+
   return 0;
 }
 
 void usb_deregister(struct usb_driver* driver) {
+  // Notify service bridge to remove DFv2 child node.
+  dh_bridge_usb_driver_removed(driver);
   std::lock_guard<std::mutex> lock(g_usb_mu);
   g_usb_drivers.erase(
       std::remove(g_usb_drivers.begin(), g_usb_drivers.end(), driver),

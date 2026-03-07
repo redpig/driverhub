@@ -8,6 +8,8 @@
 #include <lib/driver/component/cpp/node_add_args.h>
 #include <lib/driver/logging/cpp/structured_logger.h>
 
+#include "src/fuchsia/service_bridge.h"
+
 namespace driverhub {
 
 ModuleChildNode::ModuleChildNode(fdf::DriverBase* parent,
@@ -46,10 +48,19 @@ zx::result<> ModuleChildNode::Bind(
   // Build the child node properties from the module's metadata.
   auto properties = BuildNodeProperties();
 
+  // Build service offers based on the subsystems this module registered with.
+  auto offers = BuildServiceOffers();
+
   // Create the child node args.
   auto args = fuchsia_driver_framework::NodeAddArgs();
   args.name() = name();
   args.properties() = std::move(properties);
+  if (!offers.empty()) {
+    args.offers() = std::move(offers);
+    FDF_LOGL(INFO, parent_->logger(),
+             "%s: offering %zu FIDL services for composite binding",
+             name().c_str(), args.offers()->size());
+  }
 
   // Add the child node to the DFv2 topology.
   auto endpoints =
@@ -135,6 +146,58 @@ ModuleChildNode::BuildNodeProperties() const {
   }
 
   return properties;
+}
+
+std::vector<fuchsia_driver_framework::Offer>
+ModuleChildNode::BuildServiceOffers() const {
+  std::vector<fuchsia_driver_framework::Offer> offers;
+
+  // After module_init() runs, the module may have registered with various
+  // subsystems (GPIO, I2C, SPI, USB). The service bridge tracks these
+  // registrations. For each subsystem the module registered with, we add
+  // a FIDL service offer so downstream drivers can bind to this node for
+  // composite device assembly.
+  //
+  // The service offers enable patterns like:
+  //   - A touchscreen driver binding to a GPIO controller's IRQ pin
+  //   - A sensor driver binding to an I2C bus provided by a .ko module
+  //   - A display driver binding to a SPI device provided by a .ko module
+
+  // Check if any GPIO chips were registered during module_init().
+  // If so, offer fuchsia.hardware.gpio.Service.
+  if (dh_bridge_find_gpio_chip(0) != nullptr) {
+    fuchsia_driver_framework::Offer offer =
+        fdf::MakeOffer("fuchsia.hardware.gpio.Service",
+                        name());
+    offers.push_back(std::move(offer));
+  }
+
+  // Check for I2C driver registrations.
+  // The module name is used as a heuristic to find matching drivers.
+  if (dh_bridge_find_i2c_driver(name().c_str()) != nullptr) {
+    fuchsia_driver_framework::Offer offer =
+        fdf::MakeOffer("fuchsia.hardware.i2c.Service",
+                        name());
+    offers.push_back(std::move(offer));
+  }
+
+  // Check for SPI driver registrations.
+  if (dh_bridge_find_spi_driver(name().c_str()) != nullptr) {
+    fuchsia_driver_framework::Offer offer =
+        fdf::MakeOffer("fuchsia.hardware.spi.Service",
+                        name());
+    offers.push_back(std::move(offer));
+  }
+
+  // Check for USB driver registrations.
+  if (dh_bridge_find_usb_driver(name().c_str()) != nullptr) {
+    fuchsia_driver_framework::Offer offer =
+        fdf::MakeOffer("fuchsia.hardware.usb.Service",
+                        name());
+    offers.push_back(std::move(offer));
+  }
+
+  return offers;
 }
 
 }  // namespace driverhub

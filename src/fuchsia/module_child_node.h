@@ -9,6 +9,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "src/loader/module_loader.h"
 
@@ -25,6 +26,8 @@ namespace driverhub {
 //   - Exposes DFv2 bind properties derived from the module's compatible strings.
 //   - Manages the module lifecycle: module_init() on bind, module_exit() on unbind.
 //   - Is independently startable/stoppable without affecting siblings.
+//   - Exposes FIDL service offers so downstream drivers can bind to the
+//     services provided by the loaded module (e.g., GPIO, I2C, SPI).
 //
 // This wraps the core ModuleNode logic with DFv2-specific child node management.
 class ModuleChildNode {
@@ -48,6 +51,9 @@ class ModuleChildNode {
   // Build DFv2 node properties from the module's device tree compatible strings.
   std::vector<fuchsia_driver_framework::NodeProperty> BuildNodeProperties()
       const;
+
+  // Build DFv2 service offers based on subsystems the module registered with.
+  std::vector<fuchsia_driver_framework::Offer> BuildServiceOffers() const;
 
   fdf::DriverBase* parent_;  // Not owned.
   std::unique_ptr<LoadedModule> module_;

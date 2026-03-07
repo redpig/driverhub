@@ -12,6 +12,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "src/fuchsia/service_bridge.h"
+
 // I2C subsystem shim.
 //
 // Maintains an internal registry of I2C drivers and simulated adapters.
@@ -37,10 +39,16 @@ int i2c_add_driver(struct i2c_driver* driver) {
   g_i2c_drivers.push_back({driver});
   fprintf(stderr, "driverhub: i2c: registered driver '%s'\n",
           driver->driver.name);
+
+  // Notify service bridge to create DFv2 child node with I2C service offer.
+  dh_bridge_i2c_driver_added(driver);
+
   return 0;
 }
 
 void i2c_del_driver(struct i2c_driver* driver) {
+  // Notify service bridge to remove DFv2 child node.
+  dh_bridge_i2c_driver_removed(driver);
   std::lock_guard<std::mutex> lock(g_i2c_mu);
   // Remove all clients bound to this driver.
   for (auto* client : g_i2c_clients) {

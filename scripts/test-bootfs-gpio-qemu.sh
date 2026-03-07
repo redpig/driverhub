@@ -162,6 +162,7 @@ SOURCES=(
   src/fuchsia/module_enumerator.cc
   src/fuchsia/vmo_module_loader.cc
   src/fuchsia/resource_provider.cc
+  src/fuchsia/service_bridge.cc
   src/symbols/symbol_registry.cc
   src/dt/dt_provider.cc
   src/shim/kernel/memory.cc

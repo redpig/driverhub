@@ -26,6 +26,8 @@ driver_bind_rules("driverhub-bind") {
 source_set("driverhub-core") {
   sources = [
     "src/dt/dt_provider.cc",
+    "src/fuchsia/service_bridge.cc",
+    "src/fuchsia/service_bridge.h",
     "src/loader/dependency_sort.cc",
     "src/loader/memory_allocator.cc",
     "src/loader/modinfo_parser.cc",
@@ -74,12 +76,16 @@ fuchsia_driver("driverhub-driver") {
   sources = [
     "src/fuchsia/driverhub_driver.cc",
     "src/fuchsia/driverhub_driver.h",
+    "src/fuchsia/gpio_service_server.cc",
+    "src/fuchsia/gpio_service_server.h",
     "src/fuchsia/module_child_node.cc",
     "src/fuchsia/module_child_node.h",
     "src/fuchsia/module_enumerator.cc",
     "src/fuchsia/module_enumerator.h",
     "src/fuchsia/resource_provider.cc",
     "src/fuchsia/resource_provider.h",
+    "src/fuchsia/service_bridge.cc",
+    "src/fuchsia/service_bridge.h",
     "src/fuchsia/vmo_module_loader.cc",
     "src/fuchsia/vmo_module_loader.h",
   ]
@@ -121,6 +127,8 @@ shared_library("libdriverhub_kmi") {
 
   # All shim sources from driverhub-core that implement KMI symbols.
   sources = [
+    "src/fuchsia/service_bridge.cc",
+    "src/fuchsia/service_bridge.h",
     "src/shim/kernel/bug.cc",
     "src/shim/kernel/device.cc",
     "src/shim/kernel/io.cc",

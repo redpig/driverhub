@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "src/fuchsia/service_bridge.h"
 #include "src/shim/include/linux/gpio/driver.h"
 
 // GPIO subsystem shim.
@@ -220,11 +221,19 @@ int gpiochip_add_data(struct gpio_chip* gc, void* data) {
   fprintf(stderr,
           "driverhub: gpio: registered chip '%s' base=%d ngpio=%u\n",
           gc->label ? gc->label : "(null)", gc->base, gc->ngpio);
+
+  // Notify the service bridge so it can create per-pin DFv2 child nodes
+  // offering fuchsia.hardware.gpio.Service for composite binding.
+  dh_bridge_gpio_chip_added(gc);
+
   return 0;
 }
 
 void gpiochip_remove(struct gpio_chip* gc) {
   if (!gc) return;
+
+  // Notify the service bridge to remove per-pin child nodes.
+  dh_bridge_gpio_chip_removed(gc);
 
   std::lock_guard<std::mutex> lock(g_gpio_mu);
 

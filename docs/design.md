@@ -28,33 +28,45 @@ cross-module `EXPORT_SYMBOL` resolution.
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────┐
-│  DriverHub Bus Driver (DFv2 component)          │
-│                                                 │
-│  ┌─────────────┐    ┌───────────────────────┐   │
-│  │ DT Config    │───▶│ Module Loader          │   │
-│  │ (static or   │    │ (elfldltl)             │   │
-│  │  visitor)    │    └───────────┬────────────┘   │
-│  └─────────────┘                │               │
-│                       ┌─────────▼────────────┐  │
-│                       │ Symbol Registry       │  │
-│                       │ (KMI + intermodule)   │  │
-│                       └─────────┬────────────┘  │
-│                                 │               │
-│            ┌────────────────────┼───────────┐   │
-│            │                    │           │   │
-│  ┌─────────▼───────┐ ┌─────────▼───────┐ ┌─▼─┐ │
-│  │ Module Node      │ │ Module Node      │ │...│ │
-│  │ (DFv2 child)     │ │ (DFv2 child)     │ │   │ │
-│  │ e.g. usb_wifi.ko │ │ e.g. i2c_touch.ko│ │   │ │
-│  └────────┬─────────┘ └────────┬─────────┘ └───┘ │
-│           │ FIDL               │ FIDL             │
-└───────────┼────────────────────┼─────────────────┘
-            │                    │
-     ┌──────▼───────┐    ┌──────▼───────┐
-     │ Fuchsia USB   │    │ Fuchsia I2C   │
-     │ Stack         │    │ Stack         │
-     └──────────────┘    └──────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│  DriverHub Bus Driver (DFv2 component)                         │
+│                                                                 │
+│  ┌─────────────┐    ┌───────────────────────┐                   │
+│  │ DT Config    │───▶│ Module Loader          │                   │
+│  │ (static or   │    │ (elfldltl)             │                   │
+│  │  visitor)    │    └───────────┬────────────┘                   │
+│  └─────────────┘                │                               │
+│             ┌───────────────────┤                               │
+│             │         ┌─────────▼────────────┐                  │
+│  ┌──────────▼───────┐ │ Symbol Registry       │                  │
+│  │ Service Bridge    │ │ (KMI + intermodule)   │                  │
+│  │ (FIDL ↔ shim)    │ └─────────┬────────────┘                  │
+│  └──────────┬───────┘           │                               │
+│             │      ┌────────────┼───────────┐                   │
+│             │      │            │           │                   │
+│  ┌──────────▼──────▼──┐ ┌──────▼──────┐ ┌──▼──┐                │
+│  │ Module Node         │ │ Module Node  │ │ ... │                │
+│  │ (DFv2 child)        │ │ (DFv2 child) │ │     │                │
+│  │ e.g. gpio_ctrl.ko   │ │ i2c_touch.ko │ │     │                │
+│  │  ├─ gpio-0 (FIDL)   │ │              │ │     │                │
+│  │  ├─ gpio-1 (FIDL)   │ │              │ │     │                │
+│  │  └─ ...             │ │              │ │     │                │
+│  └────────┬────────────┘ └──────┬───────┘ └─────┘                │
+│           │ offers GPIO         │ offers I2C                     │
+│           │ Service             │ Service                        │
+└───────────┼─────────────────────┼────────────────────────────────┘
+            │                     │
+  ┌─────────▼──────────┐ ┌───────▼────────┐
+  │ Downstream driver   │ │ Downstream      │
+  │ (touchscreen, LED)  │ │ driver (sensor) │
+  │ binds GPIO pins     │ │ binds I2C bus   │
+  └────────┬───────────┘ └───────┬────────┘
+           │ FIDL                │ FIDL
+    ┌──────▼───────┐      ┌─────▼────────┐
+    │ Fuchsia GPIO  │      │ Fuchsia I2C   │
+    │ (served by    │      │ Stack         │
+    │  DriverHub)   │      └──────────────┘
+    └──────────────┘
 ```
 
 ## Components
@@ -210,6 +222,75 @@ triggers module loading.
 | `interrupts` property | IRQ resource from platform device |
 | `status = "okay"` | Node is created and module is loaded |
 | Child nodes | Additional DFv2 child nodes |
+
+### Service Bridge (`src/fuchsia/service_bridge.cc`)
+
+The service bridge connects Linux subsystem registrations to DFv2 service
+offers, making loaded `.ko` modules fully functional Fuchsia drivers that
+other DFv2 drivers can discover and bind to for composite node assembly.
+
+#### How it works
+
+When a `.ko` module calls a Linux subsystem registration function during
+`module_init()`, the shim layer notifies the service bridge:
+
+```
+.ko calls gpiochip_add_data(gc, data)
+  → GPIO shim stores chip, calls dh_bridge_gpio_chip_added(gc)
+    → Service bridge creates per-pin DFv2 child nodes
+      → Each child offers fuchsia.hardware.gpio.Service
+        → Downstream driver binds to "gpio-<pin>" for composite node
+          → FIDL calls route to gc->direction_input(), gc->get(), etc.
+```
+
+This pattern applies to all subsystems:
+
+| Linux registration | FIDL service offered | Child node pattern |
+|-------------------|---------------------|-------------------|
+| `gpiochip_add_data()` | `fuchsia.hardware.gpio.Service` | Per-pin: `gpio-0`, `gpio-1`, ... |
+| `i2c_add_driver()` | `fuchsia.hardware.i2c.Service` | Per-driver: `i2c-<name>` |
+| `spi_register_driver()` | `fuchsia.hardware.spi.Service` | Per-driver: `spi-<name>` |
+| `usb_register_driver()` | `fuchsia.hardware.usb.Service` | Per-driver: `usb-<name>` |
+
+#### GPIO FIDL server
+
+For GPIO, the `GpioServiceServer` class implements
+`fuchsia.hardware.gpio/Gpio` by routing each FIDL method to the
+`gpio_chip` callbacks:
+
+| FIDL method | gpio_chip callback |
+|-------------|-------------------|
+| `ConfigIn(flags)` | `gc->direction_input(gc, offset)` |
+| `ConfigOut(value)` | `gc->direction_output(gc, offset, value)` |
+| `Read()` | `gc->get(gc, offset)` |
+| `Write(value)` | `gc->set(gc, offset, value)` |
+| `GetPin()` | Returns `gc->base + offset` |
+| `GetInterrupt()` | `gc->to_irq(gc, offset)` + IRQ setup |
+
+#### Composite node binding example
+
+A touchscreen driver that needs GPIO IRQ and reset pins can bind to the
+GPIO child nodes exposed by a DriverHub GPIO controller module:
+
+```
+// Bind rules for a touchscreen needing GPIO + I2C from DriverHub modules:
+fuchsia.hardware.gpio.Service == "driverhub/gpio-3"   // IRQ pin
+fuchsia.hardware.gpio.Service == "driverhub/gpio-8"   // Reset pin
+fuchsia.hardware.i2c.Service == "driverhub/i2c-touch" // Data bus
+```
+
+The bind rules match the service offers added by
+`ModuleChildNode::BuildServiceOffers()`, which inspects which subsystems
+the module registered with during `module_init()`.
+
+#### Bridge lifecycle
+
+1. **Init**: `DriverHubDriver::Start()` calls `dh_bridge_init()` to
+   install callbacks for creating/removing DFv2 child nodes.
+2. **Runtime**: Subsystem shims notify the bridge on registration. The
+   bridge creates child nodes with service offers.
+3. **Shutdown**: `DriverHubDriver::PrepareStop()` calls
+   `dh_bridge_teardown()` to clean up.
 
 ## Module Lifecycle
 

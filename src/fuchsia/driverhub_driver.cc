@@ -11,12 +11,54 @@
 
 #include "src/fuchsia/module_child_node.h"
 #include "src/fuchsia/resource_provider.h"
+#include "src/fuchsia/service_bridge.h"
 #include "src/module_node/module_node.h"
 
 namespace driverhub {
 
 // Forward declaration — drains EXPORT_SYMBOL calls from module.cc.
 std::unordered_map<std::string, void*> DrainPendingExports();
+
+// Service bridge callback — creates a DFv2 child node for a subsystem
+// service (GPIO pin, I2C bus, SPI device, etc.) that a .ko module
+// registered during module_init().
+//
+// This is the glue between Linux subsystem registration functions
+// (gpiochip_add_data, i2c_add_driver, etc.) and the Fuchsia DFv2
+// topology. Each service child node can be bound by downstream drivers
+// for composite device assembly.
+static int BridgeAddChild(dh_bridge_ctx_t ctx, int service_type,
+                           const char* name, int instance_id,
+                           void* provider_ptr) {
+  (void)ctx;
+  (void)service_type;
+  (void)instance_id;
+  (void)provider_ptr;
+
+  // In the bus driver model, per-service child nodes are created as
+  // additional children of the bus driver's parent node. The service
+  // bridge logs the registration; the actual DFv2 child node and FIDL
+  // service binding happens when the module's ModuleChildNode is
+  // created (see ModuleChildNode::BuildServiceOffers).
+  //
+  // In the runner model (Phase 2+), the KoRunner creates dedicated
+  // component instances with proper capability routing.
+  fprintf(stderr,
+          "driverhub: bridge: service child '%s' registered "
+          "(type=%d)\n",
+          name, service_type);
+  return 0;
+}
+
+static void BridgeRemoveChild(dh_bridge_ctx_t ctx, int service_type,
+                                const char* name, void* provider_ptr) {
+  (void)ctx;
+  (void)service_type;
+  (void)provider_ptr;
+  fprintf(stderr,
+          "driverhub: bridge: service child '%s' removed (type=%d)\n",
+          name, service_type);
+}
 
 DriverHubDriver::DriverHubDriver(
     fdf::DriverStartArgs start_args,
@@ -44,6 +86,10 @@ zx::result<> DriverHubDriver::Start() {
 
   FDF_LOG(INFO, "DriverHub: %zu KMI symbols registered", symbols_.size());
 
+  // Initialize the service bridge. This connects subsystem registrations
+  // (gpiochip_add_data, i2c_add_driver, etc.) to DFv2 child node creation.
+  dh_bridge_init(this, BridgeAddChild, BridgeRemoveChild);
+
   // Bind to the parent node so we can add children.
   node_client_.Bind(std::move(node()), dispatcher());
 
@@ -69,6 +115,9 @@ void DriverHubDriver::PrepareStop(fdf::PrepareStopCompleter completer) {
     (*it)->Unbind();
   }
   child_nodes_.clear();
+
+  // Tear down the service bridge.
+  dh_bridge_teardown();
 
   completer(zx::ok());
 }
