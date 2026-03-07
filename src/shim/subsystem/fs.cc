@@ -15,15 +15,19 @@
 
 // VFS subsystem shim.
 //
-// Provides simulated implementations of Linux VFS APIs: character devices,
-// misc devices, procfs, debugfs, and sysfs. In userspace, entries are tracked
-// in internal registries but don't create real filesystem nodes.
+// Provides implementations of Linux VFS APIs: character devices, misc devices,
+// procfs, debugfs, and sysfs. Entries are tracked in internal registries.
 //
 // On Fuchsia:
 // - procfs/debugfs → Fuchsia Inspect or devfs pseudo-entries
 // - sysfs → Fuchsia devfs properties or Inspect
 // - char/misc devices → fuchsia.io or custom FIDL protocols
 // - kobjects → Fuchsia component topology nodes
+//
+// In the runner model, these registries are bridged to Starnix via the
+// fuchsia.driverhub.DeviceFs FIDL protocol so that Linux binaries running
+// under Starnix can see /sys, /proc, and /dev entries created by .ko modules.
+// See docs/starnix-integration.md for the full design.
 
 // Define opaque types (forward-declared in fs.h).
 struct dh_class {
