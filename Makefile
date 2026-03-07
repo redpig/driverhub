@@ -96,8 +96,9 @@ IMPORT_KO := tests/import_module.ko
 GPIO_KO := tests/gpio_test_module.ko
 RTC_OPS_TEST := tests/rtc_ops_test
 DEP_SORT_TEST := tests/dependency_sort_test
+MODINFO_TEST := tests/modinfo_parser_test
 
-.PHONY: all clean test test-rtc test-gki test-rtc-ops test-intermodule test-gpio test-dep-sort test-all
+.PHONY: all clean test test-rtc test-gki test-rtc-ops test-intermodule test-gpio test-dep-sort test-modinfo test-all
 
 all: $(TARGET) $(GKI_TARGET)
 
@@ -122,7 +123,10 @@ test-gpio: $(TARGET) $(GPIO_KO)
 test-dep-sort: $(DEP_SORT_TEST)
 	./$(DEP_SORT_TEST)
 
-test-all: test test-rtc test-rtc-ops test-intermodule test-gpio test-dep-sort test-gki
+test-modinfo: $(MODINFO_TEST)
+	./$(MODINFO_TEST)
+
+test-all: test test-rtc test-rtc-ops test-intermodule test-gpio test-dep-sort test-modinfo test-gki
 	@echo ""
 	@echo "=== All tests passed ==="
 
@@ -148,6 +152,9 @@ TEST_CXXFLAGS := -std=c++17 -Wall -Wextra -Wpedantic -g -I. -fno-pie
 $(DEP_SORT_TEST): tests/dependency_sort_test.cc src/loader/dependency_sort.o
 	$(CXX) $(TEST_CXXFLAGS) $(LDFLAGS) -o $@ $^ -lgtest -lgtest_main -lpthread
 
+$(MODINFO_TEST): tests/modinfo_parser_test.cc src/loader/modinfo_parser.o
+	$(CXX) $(TEST_CXXFLAGS) $(LDFLAGS) -o $@ $^ -lgtest -lgtest_main -lpthread
+
 $(RTC_OPS_TEST): tests/rtc_ops_test.cc $(LIB_OBJS)
 	$(CXX) $(TEST_CXXFLAGS) $(LDFLAGS) -o $@ $^ -lgtest -lpthread
 
@@ -166,4 +173,4 @@ $(GKI_TARGET): $(GKI_OBJS)
 clean:
 	rm -f $(OBJS) $(GKI_OBJS) $(LIB_OBJS) $(TARGET) $(GKI_TARGET) \
 		$(TEST_KO) $(RTC_TEST_KO) $(EXPORT_KO) $(IMPORT_KO) $(GPIO_KO) \
-		$(RTC_OPS_TEST) $(DEP_SORT_TEST)
+		$(RTC_OPS_TEST) $(DEP_SORT_TEST) $(MODINFO_TEST)

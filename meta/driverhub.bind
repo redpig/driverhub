@@ -3,8 +3,16 @@
 // found in the LICENSE file.
 
 // Bind rules for the DriverHub bus driver.
-// Matches against a platform device with the driverhub device ID.
+//
+// Matches against a platform device with the "driverhub" device name.
+// The board driver creates this device to trigger DriverHub loading.
+//
+// On a board with GKI modules, the board driver would create a platform
+// device like:
+//   platform_bus->AddDevice("driverhub", VID_GOOGLE, PID_DRIVERHUB)
 
 using fuchsia.platform;
 
 fuchsia.platform.DRIVER_FRAMEWORK_VERSION == 2;
+fuchsia.BIND_PLATFORM_DEV_VID == 0x00;  // PDEV_VID_GENERIC
+fuchsia.BIND_PLATFORM_DEV_DID == 0x01;  // PDEV_DID_DRIVERHUB

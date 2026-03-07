@@ -125,6 +125,7 @@ executable("driverhub-test-bin") {
   sources = [
     "tests/dependency_sort_test.cc",
     "tests/loader_test.cc",
+    "tests/modinfo_parser_test.cc",
     "tests/symbol_registry_test.cc",
   ]
 
