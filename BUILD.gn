@@ -77,6 +77,8 @@ fuchsia_driver("driverhub-driver") {
     "src/fuchsia/module_child_node.h",
     "src/fuchsia/module_enumerator.cc",
     "src/fuchsia/module_enumerator.h",
+    "src/fuchsia/resource_provider.cc",
+    "src/fuchsia/resource_provider.h",
     "src/fuchsia/vmo_module_loader.cc",
     "src/fuchsia/vmo_module_loader.h",
   ]
@@ -92,6 +94,7 @@ fuchsia_driver("driverhub-driver") {
     "//sdk/lib/driver/component/cpp",
     "//sdk/lib/driver/incoming/cpp",
     "//sdk/lib/driver/outgoing/cpp",
+    "//sdk/lib/fdio",
     "//src/lib/elfldltl",
   ]
 

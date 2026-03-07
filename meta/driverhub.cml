@@ -22,6 +22,21 @@
             service: "fuchsia.hardware.platform.device.Service",
         },
         {
+            // I/O port resource for x86 port I/O (inb/outb).
+            protocol: "fuchsia.kernel.IoportResource",
+            availability: "optional",
+        },
+        {
+            // MMIO resource for physical memory mapping (ioremap).
+            protocol: "fuchsia.kernel.MmioResource",
+            availability: "optional",
+        },
+        {
+            // VMEX resource for executable VMO creation (module loading).
+            protocol: "fuchsia.kernel.VmexResource",
+            availability: "optional",
+        },
+        {
             // I2C bus access for modules that use i2c_transfer.
             service: "fuchsia.hardware.i2c.Service",
             availability: "optional",

@@ -10,6 +10,7 @@
 #include <unordered_map>
 
 #include "src/fuchsia/module_child_node.h"
+#include "src/fuchsia/resource_provider.h"
 #include "src/module_node/module_node.h"
 
 namespace driverhub {
@@ -28,6 +29,10 @@ DriverHubDriver::~DriverHubDriver() = default;
 
 zx::result<> DriverHubDriver::Start() {
   FDF_LOG(INFO, "DriverHub bus driver starting");
+
+  // Acquire Fuchsia kernel resources for hardware access (I/O ports, MMIO, VMEX).
+  // Failures are non-fatal — features requiring unavailable resources simply won't work.
+  dh_resources_init();
 
   // Initialize the KMI shim symbol registry.
   auto status = InitShims();
