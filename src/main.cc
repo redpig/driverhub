@@ -14,11 +14,20 @@
 
 #include "src/bus_driver/bus_driver.h"
 
+#if defined(__Fuchsia__)
+#include "src/fuchsia/resource_provider.h"
+#endif
+
 int main(int argc, char** argv) {
   if (argc < 2) {
     fprintf(stderr, "usage: %s <module.ko> [module2.ko ...]\n", argv[0]);
     return 1;
   }
+
+#if defined(__Fuchsia__)
+  // Acquire Fuchsia kernel resources for hardware access.
+  dh_resources_init();
+#endif
 
   driverhub::BusDriver bus;
 

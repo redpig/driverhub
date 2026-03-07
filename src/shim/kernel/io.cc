@@ -18,17 +18,46 @@
 //   - copy_from/to_user are plain memcpy.
 //
 // On Fuchsia:
-//   - ioremap → obtain physical VMO from platform device, map into VMAR.
+//   - ioremap → zx_vmo_create_physical + zx_vmar_map via MMIO resource.
+//   - inb/outb → real x86 I/O port instructions via ioport resource.
 //   - DMA → use BTI (Bus Transaction Initiator) for pinned/contiguous memory.
+
+#if defined(__Fuchsia__)
+#include <lib/zx/vmar.h>
+#include <lib/zx/vmo.h>
+#include <zircon/process.h>
+#include <zircon/syscalls.h>
+#include "src/fuchsia/resource_provider.h"
+#endif
 
 extern "C" {
 
 // --- I/O memory mapping ---
 
 void* ioremap(unsigned long phys_addr, unsigned long size) {
-  // In userspace shim, allocate a fake MMIO region.
-  // Reads/writes go to this buffer. The bus driver would need to connect
-  // this to a real FIDL-backed MMIO on Fuchsia.
+#if defined(__Fuchsia__)
+  // Try real physical MMIO mapping using the MMIO resource.
+  zx_handle_t mmio = dh_mmio_resource();
+  if (mmio != ZX_HANDLE_INVALID) {
+    zx_handle_t vmo;
+    zx_status_t status = zx_vmo_create_physical(mmio, phys_addr, size, &vmo);
+    if (status == ZX_OK) {
+      zx_vaddr_t mapped_addr = 0;
+      status = zx_vmar_map(zx_vmar_root_self(),
+                           ZX_VM_PERM_READ | ZX_VM_PERM_WRITE,
+                           0, vmo, 0, size, &mapped_addr);
+      zx_handle_close(vmo);
+      if (status == ZX_OK) {
+        fprintf(stderr, "driverhub: ioremap(0x%lx, %lu) = %p (real MMIO)\n",
+                phys_addr, size, (void*)mapped_addr);
+        return reinterpret_cast<void*>(mapped_addr);
+      }
+    }
+    fprintf(stderr, "driverhub: ioremap(0x%lx, %lu) physical map failed: %d\n",
+            phys_addr, size, status);
+  }
+#endif
+  // Fallback: allocate simulated MMIO region.
   void* ptr = calloc(1, size);
   fprintf(stderr, "driverhub: ioremap(0x%lx, %lu) = %p (simulated)\n",
           phys_addr, size, ptr);
@@ -37,7 +66,12 @@ void* ioremap(unsigned long phys_addr, unsigned long size) {
 
 void iounmap(void* addr) {
   fprintf(stderr, "driverhub: iounmap(%p)\n", addr);
+#if defined(__Fuchsia__)
+  // TODO: Track real vs simulated mappings for proper cleanup.
+  // For now, don't free - real MMIO mappings can't be freed with free().
+#else
   free(addr);
+#endif
 }
 
 void* ioremap_wc(unsigned long phys_addr, unsigned long size) {
@@ -132,6 +166,96 @@ int dma_set_mask_and_coherent(struct device* dev, uint64_t mask) {
   (void)mask;
   return 0;
 }
+
+// --- I/O region management ---
+// These are stubs — in the Linux kernel, they manage the I/O port and MMIO
+// resource tree. On Fuchsia, the equivalent is handled by zx_ioports_request
+// and zx_vmo_create_physical.
+
+struct resource* __request_region(struct resource* parent,
+                                  unsigned long start, unsigned long n,
+                                  const char* name, int flags) {
+  (void)parent;
+  (void)flags;
+  static struct resource dummy_resource = {};
+#if defined(__Fuchsia__) && defined(__x86_64__)
+  // Request the I/O port range from the Fuchsia kernel.
+  zx_status_t status = dh_ioports_request(static_cast<uint16_t>(start),
+                                           static_cast<uint32_t>(n));
+  if (status == ZX_OK) {
+    fprintf(stderr,
+            "driverhub: request_region(%s, 0x%lx, %lu) granted (hw)\n",
+            name ? name : "?", start, n);
+  } else {
+    // The IoportResource capability isn't routed to this process.
+    // In a real DFv2 deployment, the driver would have this capability
+    // declared in its CML manifest. For now, proceed — the inb/outb
+    // will either work (if IOPL is set) or fault.
+    fprintf(stderr,
+            "driverhub: request_region(%s, 0x%lx, %lu) no IOPL "
+            "(need IoportResource capability, status=%d)\n",
+            name ? name : "?", start, n, status);
+  }
+#else
+  fprintf(stderr, "driverhub: request_region(%s, 0x%lx, %lu) (simulated)\n",
+          name ? name : "?", start, n);
+#endif
+  return &dummy_resource;
+}
+
+void __release_region(struct resource* parent,
+                      unsigned long start, unsigned long n) {
+  (void)parent;
+  fprintf(stderr, "driverhub: release_region(0x%lx, %lu)\n", start, n);
+}
+
+// --- x86 Port I/O ---
+//
+// On Fuchsia, the ioport resource must be acquired first via
+// dh_resources_init() and dh_ioports_request(). Once the kernel grants
+// access, userspace can execute in/out instructions directly.
+
+#if defined(__Fuchsia__) && defined(__x86_64__)
+// Real x86 I/O port instructions. Fuchsia grants userspace IOPL access
+// for requested port ranges via zx_ioports_request().
+uint8_t inb(uint16_t port) {
+  uint8_t val;
+  __asm__ volatile("inb %w1, %0" : "=a"(val) : "Nd"(port));
+  return val;
+}
+
+uint16_t inw(uint16_t port) {
+  uint16_t val;
+  __asm__ volatile("inw %w1, %0" : "=a"(val) : "Nd"(port));
+  return val;
+}
+
+uint32_t inl(uint16_t port) {
+  uint32_t val;
+  __asm__ volatile("inl %w1, %0" : "=a"(val) : "Nd"(port));
+  return val;
+}
+
+void outb(uint8_t val, uint16_t port) {
+  __asm__ volatile("outb %0, %w1" : : "a"(val), "Nd"(port));
+}
+
+void outw(uint16_t val, uint16_t port) {
+  __asm__ volatile("outw %0, %w1" : : "a"(val), "Nd"(port));
+}
+
+void outl(uint32_t val, uint16_t port) {
+  __asm__ volatile("outl %0, %w1" : : "a"(val), "Nd"(port));
+}
+#else
+// Stub implementations for non-Fuchsia / non-x86 builds.
+uint8_t inb(uint16_t port) { (void)port; return 0xFF; }
+uint16_t inw(uint16_t port) { (void)port; return 0xFFFF; }
+uint32_t inl(uint16_t port) { (void)port; return 0xFFFFFFFF; }
+void outb(uint8_t val, uint16_t port) { (void)val; (void)port; }
+void outw(uint16_t val, uint16_t port) { (void)val; (void)port; }
+void outl(uint32_t val, uint16_t port) { (void)val; (void)port; }
+#endif
 
 // --- User-space copy ---
 

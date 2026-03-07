@@ -218,6 +218,16 @@ void SymbolRegistry::RegisterKmiSymbols() {
   REGISTER_SYMBOL(iowrite16);
   REGISTER_SYMBOL(iowrite32);
 
+  // x86 port I/O
+  REGISTER_SYMBOL(inb);
+  REGISTER_SYMBOL(inw);
+  REGISTER_SYMBOL(inl);
+  REGISTER_SYMBOL(outb);
+  REGISTER_SYMBOL(outw);
+  REGISTER_SYMBOL(outl);
+  REGISTER_SYMBOL(__request_region);
+  REGISTER_SYMBOL(__release_region);
+
   // DMA
   REGISTER_SYMBOL(dma_alloc_coherent);
   REGISTER_SYMBOL(dma_free_coherent);

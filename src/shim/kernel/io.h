@@ -76,6 +76,22 @@ int dma_set_mask(struct device *dev, uint64_t mask);
 int dma_set_coherent_mask(struct device *dev, uint64_t mask);
 int dma_set_mask_and_coherent(struct device *dev, uint64_t mask);
 
+// --- x86 Port I/O ---
+
+uint8_t inb(uint16_t port);
+uint16_t inw(uint16_t port);
+uint32_t inl(uint16_t port);
+void outb(uint8_t val, uint16_t port);
+void outw(uint16_t val, uint16_t port);
+void outl(uint32_t val, uint16_t port);
+
+// --- I/O region management (stubs for userspace) ---
+struct resource *__request_region(struct resource *parent,
+                                  unsigned long start, unsigned long n,
+                                  const char *name, int flags);
+void __release_region(struct resource *parent,
+                      unsigned long start, unsigned long n);
+
 // --- User-space copy (no-op in userspace context) ---
 
 unsigned long copy_from_user(void *to, const void *from, unsigned long n);
