@@ -135,11 +135,7 @@ std::unique_ptr<LoadedModule> ModuleLoader::Load(std::string_view name,
     }
   }
 
-#if defined(__x86_64__)
-  // Count PC32/PLT32 relocations to estimate trampoline space needed.
-  // Each trampoline is 14 bytes: FF 25 00 00 00 00 [8-byte abs addr].
-  // We over-estimate (counting all, not just out-of-range) — the extra
-  // space is negligible.
+  // Count relocations that may need trampolines.
   size_t trampoline_count = 0;
   for (uint16_t i = 0; i < shnum; i++) {
     if (shdrs[i].sh_type != SHT_RELA) continue;
@@ -148,18 +144,32 @@ std::unique_ptr<LoadedModule> ModuleLoader::Load(std::string_view name,
     size_t rela_count = shdrs[i].sh_size / sizeof(Elf64_Rela);
     for (size_t j = 0; j < rela_count; j++) {
       uint32_t rtype = ELF64_R_TYPE(relas[j].r_info);
+#if defined(__aarch64__)
+      // R_AARCH64_CALL26 (274) or R_AARCH64_JUMP26 (283)
+      if (rtype == 274 || rtype == 283) {
+        trampoline_count++;
+      }
+#elif defined(__x86_64__)
       if (rtype == 2 || rtype == 4) {  // R_X86_64_PC32 or PLT32
         trampoline_count++;
       }
+#endif
     }
   }
-  constexpr size_t kTrampolineSize = 14;  // jmp [rip+0]; .quad addr
+#if defined(__aarch64__)
+  // ARM64 trampoline: LDR X16, [PC+8]; BR X16; .quad <target>
+  constexpr size_t kTrampolineSize = 16;
+#elif defined(__x86_64__)
+  // x86_64 trampoline: jmp [rip+0]; .quad addr
+  constexpr size_t kTrampolineSize = 14;
+#else
+  constexpr size_t kTrampolineSize = 16;
+#endif
   size_t trampoline_space = trampoline_count * kTrampolineSize;
   // Align trampoline area to 16 bytes.
   total_alloc = (total_alloc + 15) & ~15UL;
   size_t trampoline_offset = total_alloc;
   total_alloc += trampoline_space;
-#endif
 
   // Allocate RWX memory for all loadable sections via the platform allocator.
   // On host this uses mmap; on Fuchsia this uses VMOs.
@@ -270,7 +280,7 @@ std::unique_ptr<LoadedModule> ModuleLoader::Load(std::string_view name,
       // This covers the common AArch64 and x86_64 relocation types.
 
 #if defined(__aarch64__)
-      // AArch64 relocation types.
+      // AArch64 relocation types (IHI0056 ELF for AArch64).
       switch (rtype) {
         case 257:  // R_AARCH64_ABS64
           *reinterpret_cast<uint64_t*>(patch_addr) = S + A;
@@ -283,28 +293,20 @@ std::unique_ptr<LoadedModule> ModuleLoader::Load(std::string_view name,
           *reinterpret_cast<int32_t*>(patch_addr) =
               static_cast<int32_t>((S + A) - P);
           break;
-        case 274:  // R_AARCH64_CALL26 / R_AARCH64_JUMP26
-        case 283: {
-          int64_t offset_val = static_cast<int64_t>((S + A) - P);
-          uint32_t insn = *reinterpret_cast<uint32_t*>(patch_addr);
-          insn = (insn & 0xFC000000u) |
-                 (static_cast<uint32_t>((offset_val >> 2) & 0x03FFFFFF));
-          *reinterpret_cast<uint32_t*>(patch_addr) = insn;
-          break;
-        }
-        case 275:  // R_AARCH64_MOVW_UABS_G0_NC
-        case 276:  // R_AARCH64_MOVW_UABS_G1_NC
-        case 277:  // R_AARCH64_MOVW_UABS_G2_NC
-        case 278: {  // R_AARCH64_MOVW_UABS_G3
-          int shift = (rtype - 275) * 16;
+        case 264:  // R_AARCH64_MOVW_UABS_G0_NC
+        case 265:  // R_AARCH64_MOVW_UABS_G1_NC
+        case 266:  // R_AARCH64_MOVW_UABS_G2_NC
+        case 267: {  // R_AARCH64_MOVW_UABS_G3
+          int shift = (rtype - 264) * 16;
           uint32_t insn = *reinterpret_cast<uint32_t*>(patch_addr);
           uint16_t val16 = static_cast<uint16_t>((S + A) >> shift);
           insn = (insn & ~(0xFFFFu << 5)) | (static_cast<uint32_t>(val16) << 5);
           *reinterpret_cast<uint32_t*>(patch_addr) = insn;
           break;
         }
-        case 282: {  // R_AARCH64_ADR_PREL_PG_HI21
-          int64_t page = ((S + A) & ~0xFFFULL) - (P & ~0xFFFULL);
+        case 275: {  // R_AARCH64_ADR_PREL_PG_HI21
+          int64_t page = static_cast<int64_t>(
+              ((S + A) & ~0xFFFULL) - (P & ~0xFFFULL));
           uint32_t insn = *reinterpret_cast<uint32_t*>(patch_addr);
           uint32_t immlo = static_cast<uint32_t>((page >> 12) & 0x3);
           uint32_t immhi = static_cast<uint32_t>((page >> 14) & 0x7FFFF);
@@ -312,9 +314,82 @@ std::unique_ptr<LoadedModule> ModuleLoader::Load(std::string_view name,
           *reinterpret_cast<uint32_t*>(patch_addr) = insn;
           break;
         }
-        case 286: {  // R_AARCH64_ADD_ABS_LO12_NC
+        case 277: {  // R_AARCH64_ADD_ABS_LO12_NC
           uint32_t insn = *reinterpret_cast<uint32_t*>(patch_addr);
           uint32_t imm12 = static_cast<uint32_t>((S + A) & 0xFFF);
+          insn = (insn & ~(0xFFFu << 10)) | (imm12 << 10);
+          *reinterpret_cast<uint32_t*>(patch_addr) = insn;
+          break;
+        }
+        case 278: {  // R_AARCH64_LDST8_ABS_LO12_NC
+          uint32_t insn = *reinterpret_cast<uint32_t*>(patch_addr);
+          uint32_t imm12 = static_cast<uint32_t>((S + A) & 0xFFF);
+          insn = (insn & ~(0xFFFu << 10)) | (imm12 << 10);
+          *reinterpret_cast<uint32_t*>(patch_addr) = insn;
+          break;
+        }
+        case 282:  // R_AARCH64_JUMP26
+        case 283: {  // R_AARCH64_CALL26
+          int64_t offset_val = static_cast<int64_t>((S + A) - P);
+          // CALL26/JUMP26 encode a signed 26-bit word offset (±128MB).
+          constexpr int64_t kMaxRange = (1LL << 27) - 4;
+          if (offset_val > kMaxRange || offset_val < -kMaxRange) {
+            // Target is >128MB away. Emit a trampoline.
+            //   LDR X16, [PC+8]   ; 0x58000050
+            //   BR  X16            ; 0xD61F0200
+            //   .quad <target>     ; 8-byte absolute address
+            if (trampoline_offset + kTrampolineSize > alloc->size) {
+              fprintf(stderr,
+                      "driverhub: %.*s: trampoline space exhausted\n",
+                      (int)name.size(), name.data());
+              break;
+            }
+            uint8_t* tramp = alloc_base + trampoline_offset;
+            *reinterpret_cast<uint32_t*>(tramp + 0) = 0x58000050;  // LDR X16, [PC+8]
+            *reinterpret_cast<uint32_t*>(tramp + 4) = 0xD61F0200;  // BR X16
+            uint64_t target = S;
+            memcpy(tramp + 8, &target, 8);
+
+            // Redirect the BL/B to the trampoline instead.
+            uint64_t T = reinterpret_cast<uint64_t>(tramp);
+            int64_t tramp_offset = static_cast<int64_t>(T - P);
+            uint32_t insn = *reinterpret_cast<uint32_t*>(patch_addr);
+            insn = (insn & 0xFC000000u) |
+                   (static_cast<uint32_t>((tramp_offset >> 2) & 0x03FFFFFF));
+            *reinterpret_cast<uint32_t*>(patch_addr) = insn;
+            trampoline_offset += kTrampolineSize;
+          } else {
+            uint32_t insn = *reinterpret_cast<uint32_t*>(patch_addr);
+            insn = (insn & 0xFC000000u) |
+                   (static_cast<uint32_t>((offset_val >> 2) & 0x03FFFFFF));
+            *reinterpret_cast<uint32_t*>(patch_addr) = insn;
+          }
+          break;
+        }
+        case 284: {  // R_AARCH64_LDST16_ABS_LO12_NC
+          uint32_t insn = *reinterpret_cast<uint32_t*>(patch_addr);
+          uint32_t imm12 = static_cast<uint32_t>(((S + A) & 0xFFF) >> 1);
+          insn = (insn & ~(0xFFFu << 10)) | (imm12 << 10);
+          *reinterpret_cast<uint32_t*>(patch_addr) = insn;
+          break;
+        }
+        case 285: {  // R_AARCH64_LDST32_ABS_LO12_NC
+          uint32_t insn = *reinterpret_cast<uint32_t*>(patch_addr);
+          uint32_t imm12 = static_cast<uint32_t>(((S + A) & 0xFFF) >> 2);
+          insn = (insn & ~(0xFFFu << 10)) | (imm12 << 10);
+          *reinterpret_cast<uint32_t*>(patch_addr) = insn;
+          break;
+        }
+        case 286: {  // R_AARCH64_LDST64_ABS_LO12_NC
+          uint32_t insn = *reinterpret_cast<uint32_t*>(patch_addr);
+          uint32_t imm12 = static_cast<uint32_t>(((S + A) & 0xFFF) >> 3);
+          insn = (insn & ~(0xFFFu << 10)) | (imm12 << 10);
+          *reinterpret_cast<uint32_t*>(patch_addr) = insn;
+          break;
+        }
+        case 299: {  // R_AARCH64_LDST128_ABS_LO12_NC
+          uint32_t insn = *reinterpret_cast<uint32_t*>(patch_addr);
+          uint32_t imm12 = static_cast<uint32_t>(((S + A) & 0xFFF) >> 4);
           insn = (insn & ~(0xFFFu << 10)) | (imm12 << 10);
           *reinterpret_cast<uint32_t*>(patch_addr) = insn;
           break;
