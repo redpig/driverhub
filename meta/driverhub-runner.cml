@@ -28,13 +28,21 @@
     ],
     use: [
         {
-            protocol: [
-                "fuchsia.kernel.VmexResource",
-                "fuchsia.process.Launcher",
-            ],
+            protocol: "fuchsia.kernel.VmexResource",
         },
         {
-            protocol: "fuchsia.component.resolution.Resolver",
+            // Job under which module processes are created. In bootfs the
+            // default job may not be set, so this is routed explicitly.
+            protocol: "fuchsia.kernel.RootJobForInspect",
+            availability: "optional",
+        },
+        {
+            // /boot directory for bootfs-based deployments. The runner
+            // tries /pkg first, then falls back to /boot for the shim
+            // library and module binaries.
+            directory: "boot",
+            rights: [ "rx*" ],
+            path: "/boot",
             availability: "optional",
         },
     ],

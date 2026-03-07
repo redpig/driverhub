@@ -181,12 +181,16 @@ zx_status_t ManagedProcess::InjectShimLibrary() {
     // environments but we still want to load the shim library.
   }
 
-  // Open the runner's packaged copy of the KMI shim shared library.
+  // Open the runner's copy of the KMI shim shared library.
+  // Try /pkg first (package-based), then /boot (bootfs-based).
   int fd = open("/pkg/lib/libdriverhub_kmi.so", O_RDONLY);
+  if (fd < 0) {
+    fd = open("/boot/lib/libdriverhub_kmi.so", O_RDONLY);
+  }
   if (fd < 0) {
     fprintf(stderr,
             "driverhub: process_manager: failed to open "
-            "libdriverhub_kmi.so: %s\n",
+            "libdriverhub_kmi.so in /pkg or /boot: %s\n",
             strerror(errno));
     return ZX_ERR_NOT_FOUND;
   }
@@ -484,16 +488,19 @@ zx_status_t ManagedProcess::ReadModuleBinary(
     return ZX_ERR_NOT_FOUND;
   }
 
+  // Look for the .ko file in /pkg (package-based) or /boot (bootfs-based).
   for (const auto& entry : start_info.ns().value()) {
-    if (!entry.path().has_value() || entry.path().value() != "/pkg") {
+    if (!entry.path().has_value()) continue;
+    const auto& ns_path = entry.path().value();
+    if (ns_path != "/pkg" && ns_path != "/boot") {
       continue;
     }
 
     if (!entry.directory().has_value()) {
-      return ZX_ERR_NOT_FOUND;
+      continue;
     }
 
-    // Duplicate the /pkg directory channel and convert it to a file descriptor
+    // Duplicate the directory channel and convert it to a file descriptor
     // so we can use POSIX openat() to read the .ko file.
     auto& dir_client = entry.directory().value();
     zx::channel dir_chan;
@@ -501,9 +508,9 @@ zx_status_t ManagedProcess::ReadModuleBinary(
         dir_client.channel()->duplicate(ZX_RIGHT_SAME_RIGHTS, &dir_chan);
     if (status != ZX_OK) {
       fprintf(stderr,
-              "driverhub: process_manager: failed to duplicate /pkg "
+              "driverhub: process_manager: failed to duplicate %s "
               "channel: %s\n",
-              zx_status_get_string(status));
+              ns_path.c_str(), zx_status_get_string(status));
       return status;
     }
 
@@ -516,14 +523,12 @@ zx_status_t ManagedProcess::ReadModuleBinary(
       return status;
     }
 
-    // Open the .ko file relative to /pkg.
+    // Open the .ko file relative to the namespace directory.
     int file_fd = openat(dir_fd, ko_path.c_str(), O_RDONLY);
     if (file_fd < 0) {
-      fprintf(stderr,
-              "driverhub: process_manager: failed to open %s: %s\n",
-              ko_path.c_str(), strerror(errno));
+      // File not found in this namespace entry; try the next one.
       close(dir_fd);
-      return ZX_ERR_NOT_FOUND;
+      continue;
     }
 
     // Get the file size.
@@ -1146,8 +1151,13 @@ void ManagedProcess::MonitorForCrash(async_dispatcher_t* dispatcher,
 // ProcessManager
 // ---------------------------------------------------------------------------
 
+ProcessManager::ProcessManager(async_dispatcher_t* dispatcher,
+                               zx::unowned_job job)
+    : dispatcher_(dispatcher), job_(std::move(job)) {}
+
 ProcessManager::ProcessManager(async_dispatcher_t* dispatcher)
-    : dispatcher_(dispatcher) {}
+    : ProcessManager(dispatcher,
+                     zx::unowned_job(zx::job::default_job())) {}
 
 ProcessManager::~ProcessManager() = default;
 
@@ -1162,7 +1172,7 @@ std::unique_ptr<ManagedProcess> ProcessManager::CreateProcess(
   }
 
   zx_status_t status = zx::process::create(
-      *zx::job::default_job(), process_name.c_str(), process_name.size(), 0u,
+      *job_, process_name.c_str(), process_name.size(), 0u,
       &child_process, &child_vmar);
 
   if (status != ZX_OK) {

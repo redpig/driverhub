@@ -11,6 +11,7 @@
 #include <lib/zx/process.h>
 #include <lib/zx/thread.h>
 #include <lib/zx/vmar.h>
+#include <lib/zx/job.h>
 #include <lib/zx/vmo.h>
 
 #include <cstdint>
@@ -105,6 +106,13 @@ class ManagedProcess {
 // Creates and manages child processes for .ko modules.
 class ProcessManager {
  public:
+  // |job| is the job under which child processes are created. In the
+  // package-based world this is typically zx::job::default_job(); in
+  // bootfs the runner receives a scoped job via capability routing.
+  // If |job| is invalid, falls back to zx::job::default_job().
+  ProcessManager(async_dispatcher_t* dispatcher, zx::unowned_job job);
+
+  // Convenience overload — uses zx::job::default_job().
   explicit ProcessManager(async_dispatcher_t* dispatcher);
   ~ProcessManager();
 
@@ -114,6 +122,7 @@ class ProcessManager {
 
  private:
   async_dispatcher_t* dispatcher_;
+  zx::unowned_job job_;
 };
 
 }  // namespace driverhub
