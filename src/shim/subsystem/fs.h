@@ -314,6 +314,27 @@ void kobject_del(struct kobject *kobj);
 // sysfs_notify: wake up poll waiters on a sysfs attribute.
 void sysfs_notify(struct kobject *kobj, const char *dir, const char *attr);
 
+// sysfs_emit: print into a sysfs attribute page buffer (PAGE_SIZE limited).
+int sysfs_emit(char *buf, const char *fmt, ...);
+
+// kobject_uevent: send a uevent for hotplug notification.
+int kobject_uevent(struct kobject *kobj, int action);
+
+// uevent environment variable helper.
+struct kobj_uevent_env {
+  char buf[2048];
+  int buflen;
+  int envp_idx;
+  char *envp[32];
+};
+int add_uevent_var(struct kobj_uevent_env *env, const char *fmt, ...);
+
+// stream_open: mark a file as a stream (non-seekable).
+int stream_open(struct inode *inode, struct file *filp);
+
+// compat_ptr_ioctl: 32-bit compat ioctl passthrough.
+long compat_ptr_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

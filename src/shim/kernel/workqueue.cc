@@ -127,4 +127,43 @@ void flush_workqueue(struct workqueue_struct* wq) {
   // Simplified: assumes items drain quickly.
 }
 
+int queue_work_on(int cpu, struct workqueue_struct* wq,
+                  struct work_struct* work) {
+  (void)cpu;  // Ignore CPU affinity in userspace.
+  return queue_work(wq, work);
+}
+
+int queue_delayed_work_on(int cpu, struct workqueue_struct* wq,
+                          struct delayed_work* dwork, unsigned long delay) {
+  (void)cpu;
+  return queue_delayed_work(wq, dwork, delay);
+}
+
+void delayed_work_timer_fn(struct work_struct* work) {
+  (void)work;
+  // In Linux, this is the timer callback that queues the delayed_work.
+  // Our simplified delayed work executes immediately, so this is a no-op.
+}
+
+unsigned long round_jiffies_relative(unsigned long j) {
+  // Round to next full second (HZ jiffies) for power-efficient batching.
+  return j;  // Simplified: return as-is.
+}
+
+// Global workqueues — lazily initialized to the default workqueue.
+struct workqueue_struct* system_wq = nullptr;
+struct workqueue_struct* system_power_efficient_wq = nullptr;
+
+// Ensure global workqueues are initialized before first use.
+namespace {
+struct GlobalWqInit {
+  GlobalWqInit() {
+    auto* def = GetDefaultWq();
+    system_wq = reinterpret_cast<struct workqueue_struct*>(def);
+    system_power_efficient_wq = reinterpret_cast<struct workqueue_struct*>(def);
+  }
+};
+static GlobalWqInit g_global_wq_init;
+}  // namespace
+
 }  // extern "C"

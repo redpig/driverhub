@@ -83,6 +83,66 @@ struct platform_driver;
 void platform_device_del(struct platform_device *pdev);
 int __platform_driver_register(struct platform_driver *drv, void *owner);
 int device_init_wakeup(struct device *dev, int enable);
+
+// device model (rfkill)
+void device_initialize(struct device* dev);
+int device_add(struct device* dev);
+void device_del(struct device* dev);
+void put_device(struct device* dev);
+int dev_set_name(struct device* dev, const char* fmt, ...);
+struct dh_class;
+int class_register(struct dh_class* cls);
+void class_unregister(struct dh_class* cls);
+
+// wait queue internals — already declared via sync.h include
+
+// workqueue variants (rfkill)
+int queue_work_on(int cpu, struct workqueue_struct* wq, struct work_struct* work);
+int queue_delayed_work_on(int cpu, struct workqueue_struct* wq,
+                          struct delayed_work* dwork, unsigned long delay);
+void delayed_work_timer_fn(struct work_struct* work);
+unsigned long round_jiffies_relative(unsigned long j);
+extern struct workqueue_struct *system_wq;
+extern struct workqueue_struct *system_power_efficient_wq;
+
+// fs extras (rfkill)
+int sysfs_emit(char *buf, const char *fmt, ...);
+int kobject_uevent(struct kobject *kobj, int action);
+struct kobj_uevent_env;
+int add_uevent_var(struct kobj_uevent_env *env, const char *fmt, ...);
+struct inode;
+struct file;
+int stream_open(struct inode *inode, struct file *filp);
+long compat_ptr_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
+
+// LED trigger register/unregister (rfkill)
+struct led_trigger;
+int led_trigger_register(struct led_trigger* trigger);
+void led_trigger_unregister(struct led_trigger* trigger);
+
+// rfkill stubs (misc kernel APIs)
+void* dh_memcpy(void* dest, const void* src, unsigned long n);
+int dh_strcmp(const char* s1, const char* s2);
+unsigned long dh_strlen(const char* s);
+int capable(int cap);
+int kstrtoull(const char* s, unsigned int base, unsigned long long* res);
+extern struct kernel_param_ops param_ops_uint;
+unsigned long __arch_copy_from_user(void* to, const void* from, unsigned long n);
+unsigned long __arch_copy_to_user(void* to, const void* from, unsigned long n);
+void __check_object_size(const void* ptr, unsigned long n, int to_user);
+int __list_add_valid_or_report(void* new_entry, void* prev, void* next);
+int __list_del_entry_valid_or_report(void* entry);
+void fortify_panic(const char* name);
+void alt_cb_patch_nops(void* alt, int nr);
+extern unsigned long* system_cpucaps;
+unsigned long _raw_spin_lock_irqsave(void* lock);
+void _raw_spin_unlock_irqrestore(void* lock, unsigned long flags);
+extern void** kmalloc_caches;
+void* kmalloc_trace(void* cache, unsigned int flags, unsigned long size);
+void* __kmalloc(unsigned long size, unsigned int flags);
+void __wake_up(void* wq_head, unsigned int mode, int nr_exclusive, void* key);
+void __init_waitqueue_head(void* wq_head, const char* name, void* key);
+void __mutex_init(void* mutex_ptr, const char* name, void* key);
 }
 
 namespace driverhub {
@@ -711,6 +771,83 @@ void SymbolRegistry::RegisterKmiSymbols() {
   REGISTER_SYMBOL(led_blink_set_oneshot);
   REGISTER_SYMBOL(led_trigger_event);
   REGISTER_SYMBOL(led_trigger_blink);
+  REGISTER_SYMBOL(led_trigger_register);
+  REGISTER_SYMBOL(led_trigger_unregister);
+
+  // Device model — lifecycle
+  REGISTER_SYMBOL(device_initialize);
+  REGISTER_SYMBOL(device_add);
+  REGISTER_SYMBOL(device_del);
+  REGISTER_SYMBOL(put_device);
+  REGISTER_SYMBOL(dev_set_name);
+  REGISTER_SYMBOL(class_register);
+  REGISTER_SYMBOL(class_unregister);
+
+  // Wait queue internals
+  REGISTER_SYMBOL(init_wait_entry);
+  REGISTER_SYMBOL(prepare_to_wait_event);
+  REGISTER_SYMBOL(finish_wait);
+  REGISTER_SYMBOL(schedule);
+
+  // Workqueue — CPU-specific and timer variants
+  REGISTER_SYMBOL(queue_work_on);
+  REGISTER_SYMBOL(queue_delayed_work_on);
+  REGISTER_SYMBOL(delayed_work_timer_fn);
+  REGISTER_SYMBOL(round_jiffies_relative);
+  // Global workqueue pointers (data symbols).
+  Register("system_wq", reinterpret_cast<void*>(
+      reinterpret_cast<uintptr_t>(&system_wq)));
+  Register("system_power_efficient_wq", reinterpret_cast<void*>(
+      reinterpret_cast<uintptr_t>(&system_power_efficient_wq)));
+
+  // VFS extras
+  REGISTER_SYMBOL(sysfs_emit);
+  REGISTER_SYMBOL(kobject_uevent);
+  REGISTER_SYMBOL(add_uevent_var);
+  REGISTER_SYMBOL(stream_open);
+  REGISTER_SYMBOL(compat_ptr_ioctl);
+
+  // Kernel libc equivalents (mapped to shim wrappers)
+  Register("memcpy", reinterpret_cast<void*>(
+      reinterpret_cast<uintptr_t>(&dh_memcpy)));
+  Register("strcmp", reinterpret_cast<void*>(
+      reinterpret_cast<uintptr_t>(&dh_strcmp)));
+  Register("strlen", reinterpret_cast<void*>(
+      reinterpret_cast<uintptr_t>(&dh_strlen)));
+
+  // Misc kernel APIs
+  REGISTER_SYMBOL(capable);
+  REGISTER_SYMBOL(kstrtoull);
+  Register("param_ops_uint", reinterpret_cast<void*>(
+      reinterpret_cast<uintptr_t>(&param_ops_uint)));
+  REGISTER_SYMBOL(fortify_panic);
+
+  // ARM64 arch stubs
+  REGISTER_SYMBOL(__arch_copy_from_user);
+  REGISTER_SYMBOL(__arch_copy_to_user);
+  REGISTER_SYMBOL(__check_object_size);
+  REGISTER_SYMBOL(alt_cb_patch_nops);
+  Register("system_cpucaps", reinterpret_cast<void*>(
+      reinterpret_cast<uintptr_t>(&system_cpucaps)));
+
+  // List validation (CONFIG_DEBUG_LIST)
+  REGISTER_SYMBOL(__list_add_valid_or_report);
+  REGISTER_SYMBOL(__list_del_entry_valid_or_report);
+
+  // Raw spinlock variants
+  REGISTER_SYMBOL(_raw_spin_lock_irqsave);
+  REGISTER_SYMBOL(_raw_spin_unlock_irqrestore);
+
+  // kmalloc internals (GKI 6.x)
+  Register("kmalloc_caches", reinterpret_cast<void*>(
+      reinterpret_cast<uintptr_t>(&kmalloc_caches)));
+  REGISTER_SYMBOL(kmalloc_trace);
+  REGISTER_SYMBOL(__kmalloc);
+
+  // Internal init functions
+  REGISTER_SYMBOL(__wake_up);
+  REGISTER_SYMBOL(__init_waitqueue_head);
+  REGISTER_SYMBOL(__mutex_init);
 
   fprintf(stderr, "driverhub: registered %zu KMI symbols\n", symbols_.size());
 }

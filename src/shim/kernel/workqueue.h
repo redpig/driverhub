@@ -51,6 +51,22 @@ int cancel_delayed_work_sync(struct delayed_work *dwork);
 // Flush all pending work on a workqueue.
 void flush_workqueue(struct workqueue_struct *wq);
 
+// queue_work_on / queue_delayed_work_on — CPU-specific variants.
+int queue_work_on(int cpu, struct workqueue_struct *wq,
+                  struct work_struct *work);
+int queue_delayed_work_on(int cpu, struct workqueue_struct *wq,
+                          struct delayed_work *dwork, unsigned long delay);
+
+// Timer function for delayed work (used as callback).
+void delayed_work_timer_fn(struct work_struct *work);
+
+// Round jiffies to next full second boundary for power efficiency.
+unsigned long round_jiffies_relative(unsigned long j);
+
+// Global workqueue pointers (system_wq, system_power_efficient_wq).
+extern struct workqueue_struct *system_wq;
+extern struct workqueue_struct *system_power_efficient_wq;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

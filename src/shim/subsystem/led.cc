@@ -82,4 +82,17 @@ void led_trigger_blink(void* /*trigger*/,
   // No-op.
 }
 
+int led_trigger_register(struct led_trigger* trigger) {
+  if (!trigger) return -22;
+  fprintf(stderr, "driverhub: led: trigger registered '%s'\n",
+          trigger->name ? trigger->name : "unknown");
+  return 0;
+}
+
+void led_trigger_unregister(struct led_trigger* trigger) {
+  if (!trigger) return;
+  fprintf(stderr, "driverhub: led: trigger unregistered '%s'\n",
+          trigger->name ? trigger->name : "unknown");
+}
+
 }  // extern "C"

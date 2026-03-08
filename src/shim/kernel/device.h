@@ -59,6 +59,18 @@ static inline const char* dev_name(const struct device* dev) {
 void* devm_kmalloc(struct device* dev, size_t size, unsigned int flags);
 void* devm_kzalloc(struct device* dev, size_t size, unsigned int flags);
 
+// Device lifecycle.
+void device_initialize(struct device* dev);
+int device_add(struct device* dev);
+void device_del(struct device* dev);
+void put_device(struct device* dev);
+int dev_set_name(struct device* dev, const char* fmt, ...);
+
+// Class registration (rfkill uses direct class_register/unregister).
+struct dh_class;
+int class_register(struct dh_class* cls);
+void class_unregister(struct dh_class* cls);
+
 // Error pointer helpers (Linux convention: errors encoded as pointers).
 #define MAX_ERRNO 4095
 

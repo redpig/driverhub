@@ -691,4 +691,53 @@ void sysfs_notify(struct kobject *kobj, const char *dir, const char *attr) {
   fprintf(stderr, "driverhub: sysfs: notify '%s'\n", attr ? attr : "");
 }
 
+int sysfs_emit(char *buf, const char *fmt, ...) {
+  if (!buf || !fmt) return 0;
+  va_list ap;
+  va_start(ap, fmt);
+  // PAGE_SIZE is typically 4096. sysfs_emit guarantees not to exceed it.
+  int n = vsnprintf(buf, 4096, fmt, ap);
+  va_end(ap);
+  return n;
+}
+
+int kobject_uevent(struct kobject *kobj, int action) {
+  (void)kobj;
+  (void)action;
+  // In Linux, sends a netlink uevent. Stub for userspace.
+  return 0;
+}
+
+int add_uevent_var(struct kobj_uevent_env *env, const char *fmt, ...) {
+  if (!env || !fmt) return -22;
+  va_list ap;
+  va_start(ap, fmt);
+  int n = vsnprintf(env->buf + env->buflen,
+                    sizeof(env->buf) - env->buflen, fmt, ap);
+  va_end(ap);
+  if (n > 0 && env->buflen + n < (int)sizeof(env->buf)) {
+    if (env->envp_idx < 31) {
+      env->envp[env->envp_idx++] = env->buf + env->buflen;
+    }
+    env->buflen += n + 1;  // Include null terminator.
+  }
+  return 0;
+}
+
+int stream_open(struct inode *inode, struct file *filp) {
+  (void)inode;
+  if (filp) {
+    // Mark as stream (non-seekable). In Linux this sets FMODE_STREAM.
+    filp->f_mode |= 0x200000;
+  }
+  return 0;
+}
+
+long compat_ptr_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
+  // Pass through to unlocked_ioctl.
+  if (file && file->f_op && file->f_op->unlocked_ioctl)
+    return file->f_op->unlocked_ioctl(file, cmd, arg);
+  return -25;  // -ENOTTY
+}
+
 }  // extern "C"

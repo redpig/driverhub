@@ -68,9 +68,15 @@ void led_blink_set_oneshot(struct led_classdev* led,
                            int invert);
 
 // LED triggers.
+struct led_trigger {
+  const char* name;
+};
+
 void led_trigger_event(void* trigger, int brightness);
 void led_trigger_blink(void* trigger,
                        unsigned long delay_on, unsigned long delay_off);
+int led_trigger_register(struct led_trigger* trigger);
+void led_trigger_unregister(struct led_trigger* trigger);
 
 #ifdef __cplusplus
 }  // extern "C"

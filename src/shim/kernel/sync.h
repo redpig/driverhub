@@ -54,9 +54,25 @@ struct wait_queue_head {
 
 typedef struct wait_queue_head wait_queue_head_t;
 
+// Wait queue entry (used by prepare_to_wait_event / finish_wait).
+struct wait_queue_entry {
+  unsigned int flags;
+  void* private_data;
+  void* func;  // wake function
+  void* entry_opaque;
+};
+
 void init_waitqueue_head(wait_queue_head_t* wq);
 void wake_up(wait_queue_head_t* wq);
 void wake_up_all(wait_queue_head_t* wq);
+
+// Internal wait queue helpers (used by rfkill.ko).
+void init_wait_entry(struct wait_queue_entry* wq_entry, int flags);
+long prepare_to_wait_event(wait_queue_head_t* wq_head,
+                           struct wait_queue_entry* wq_entry, int state);
+void finish_wait(wait_queue_head_t* wq_head,
+                 struct wait_queue_entry* wq_entry);
+void schedule(void);
 
 // --- Completion ---
 

@@ -9,6 +9,7 @@
 #include <condition_variable>
 #include <cstdlib>
 #include <mutex>
+#include <thread>
 
 // KMI sync shims: map Linux kernel synchronization to C++ std primitives.
 // On Fuchsia, spinlocks could use sync_mutex_t and wait queues could use
@@ -147,6 +148,39 @@ unsigned long wait_for_completion_timeout(struct completion* c,
     return timeout_jiffies;  // Remaining jiffies (simplified).
   }
   return 0;  // Timed out.
+}
+
+// --- Wait queue internals (used by rfkill.ko) ---
+
+void init_wait_entry(struct wait_queue_entry* wq_entry, int flags) {
+  if (!wq_entry) return;
+  wq_entry->flags = flags;
+  wq_entry->private_data = nullptr;
+  wq_entry->func = nullptr;
+  wq_entry->entry_opaque = nullptr;
+}
+
+long prepare_to_wait_event(wait_queue_head_t* wq_head,
+                           struct wait_queue_entry* wq_entry, int state) {
+  (void)wq_head;
+  (void)wq_entry;
+  (void)state;
+  // In Linux, this adds the entry to the waitqueue and sets task state.
+  // Our simplified version is a no-op; the actual waiting happens in schedule().
+  return 0;
+}
+
+void finish_wait(wait_queue_head_t* wq_head,
+                 struct wait_queue_entry* wq_entry) {
+  (void)wq_head;
+  (void)wq_entry;
+  // Remove entry from waitqueue and reset task state.
+}
+
+void schedule(void) {
+  // Yield CPU. In Linux this switches to another task.
+  // In userspace, briefly yield to allow other threads to run.
+  std::this_thread::yield();
 }
 
 }  // extern "C"
