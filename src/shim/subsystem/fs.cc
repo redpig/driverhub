@@ -13,6 +13,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "src/shim/subsystem/vfs_service.h"
+
 // VFS subsystem shim.
 //
 // Provides implementations of Linux VFS APIs: character devices, misc devices,
@@ -132,6 +134,13 @@ int cdev_add(struct cdev *cdev, dev_t dev, unsigned int count) {
   g_chrdevs.push_back({"cdev", MAJOR(dev), count, cdev->ops, cdev});
   fprintf(stderr, "driverhub: cdev: added %u:%u (count=%u)\n",
           MAJOR(dev), MINOR(dev), count);
+
+  // Register in DevFs.
+  char name[64];
+  snprintf(name, sizeof(name), "cdev%u_%u", MAJOR(dev), MINOR(dev));
+  driverhub::DevFs::Instance().RegisterChrdev(
+      name, MAJOR(dev), MINOR(dev), count, cdev->ops);
+
   return 0;
 }
 
@@ -264,6 +273,11 @@ int misc_register(struct miscdevice *misc) {
   g_misc_devices.push_back(misc);
   fprintf(stderr, "driverhub: misc: registered '%s' minor=%d\n",
           misc->name ? misc->name : "", misc->minor);
+
+  // Register in DevFs so the VFS service exposes it automatically.
+  driverhub::DevFs::Instance().RegisterMisc(
+      misc->name, misc->minor, misc->fops, misc->this_device);
+
   return 0;
 }
 
@@ -278,6 +292,8 @@ void misc_deregister(struct miscdevice *misc) {
   }
   fprintf(stderr, "driverhub: misc: deregistered '%s'\n",
           misc->name ? misc->name : "");
+
+  driverhub::DevFs::Instance().DeregisterMisc(misc->name);
 }
 
 // ============================================================
@@ -413,6 +429,18 @@ struct proc_dir_entry *proc_create_data(
   }
 
   fprintf(stderr, "driverhub: proc: created /proc/%s\n", path.c_str());
+
+  // Register in ProcFs service.
+  // Extract parent path from full path.
+  std::string parent_path;
+  auto slash = path.rfind('/');
+  if (slash != std::string::npos) {
+    parent_path = path.substr(0, slash);
+  }
+  driverhub::ProcFs::Instance().AddEntry(
+      name, parent_path.empty() ? nullptr : parent_path.c_str(),
+      mode, proc_fops, data);
+
   return entry;
 }
 
@@ -474,8 +502,35 @@ struct proc_dir_entry *proc_create_single_data(
     const char *name, unsigned short mode,
     struct proc_dir_entry *parent,
     int (*show)(struct seq_file *, void *), void *data) {
-  (void)show;
-  return proc_create_data(name, mode, parent, nullptr, data);
+  auto* entry = proc_create_data(name, mode, parent, nullptr, data);
+
+  // Register single_show with ProcFs service (proc_create_data already
+  // registered a basic entry, but without the show callback).
+  if (entry && show) {
+    std::string path;
+    if (parent) {
+      std::lock_guard<std::mutex> lock(g_fs_mu);
+      auto it = g_proc_entries.find(parent);
+      if (it != g_proc_entries.end()) {
+        path = it->second.path + "/";
+      }
+    }
+    path += name ? name : "";
+
+    // Remove the basic entry and re-add with single_show.
+    driverhub::ProcFs::Instance().RemoveEntry(
+        name ? name : "entry");
+    std::string parent_path;
+    auto slash = path.rfind('/');
+    if (slash != std::string::npos) {
+      parent_path = path.substr(0, slash);
+    }
+    driverhub::ProcFs::Instance().AddSingleEntry(
+        name, parent_path.empty() ? nullptr : parent_path.c_str(),
+        mode, show, data);
+  }
+
+  return entry;
 }
 
 // ============================================================
@@ -584,6 +639,10 @@ int sysfs_create_group(struct kobject *kobj,
   fprintf(stderr, "driverhub: sysfs: created group '%s' on '%s'\n",
           grp->name ? grp->name : "(default)",
           kobj->name ? kobj->name : "");
+
+  // Register in SysFs service.
+  driverhub::SysFs::Instance().AddGroup(kobj, grp);
+
   return 0;
 }
 
@@ -614,9 +673,14 @@ void sysfs_remove_file(struct kobject *kobj, const struct attribute *attr) {
 
 int device_create_file(struct device *dev,
                        const struct device_attribute *attr) {
-  (void)dev;
   fprintf(stderr, "driverhub: sysfs: device_create_file '%s'\n",
           attr && attr->attr.name ? attr->attr.name : "");
+
+  // Register in SysFs service.
+  if (attr) {
+    driverhub::SysFs::Instance().AddDeviceAttr(dev, attr);
+  }
+
   return 0;
 }
 

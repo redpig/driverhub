@@ -1,0 +1,150 @@
+// Copyright 2024 The DriverHub Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+/// FIDL protocol for DriverHub's virtual filesystem services.
+///
+/// Provides unified access to /dev, /sys, and /proc virtual filesystems
+/// populated by loaded GKI kernel modules.  This is the DriverHub
+/// equivalent of Starnix's FsNode-based virtual filesystem layer.
+///
+/// Modules automatically register nodes when they call Linux VFS APIs:
+///   misc_register()       -> /dev/<name>
+///   cdev_add()            -> /dev/<name>
+///   sysfs_create_file()   -> /sys/<path>
+///   device_create_file()  -> /sys/devices/<dev>/<attr>
+///   proc_create()         -> /proc/<path>
+///
+/// Downstream Fuchsia components and tools (devctl) use this protocol
+/// to browse and interact with the virtual filesystem tree.
+library fuchsia.driverhub;
+
+using zx;
+
+/// Type of VFS node.
+type VfsNodeType = flexible enum : uint8 {
+    DIRECTORY = 0;
+    CHAR_DEVICE = 1;
+    MISC_DEVICE = 2;
+    PROC_ENTRY = 3;
+    SYSFS_ATTR = 4;
+    DEBUGFS_ENTRY = 5;
+};
+
+/// Information about a VFS node.
+type VfsNodeInfo = table {
+    /// Full path (e.g., "/dev/rfkill", "/sys/class/rfkill/rfkill0/state").
+    1: path string:1024;
+    /// Node name (leaf component of path).
+    2: name string:256;
+    /// Node type.
+    3: node_type VfsNodeType;
+    /// Permission mode bits (Linux-style, e.g., 0644).
+    4: mode uint16;
+    /// Device major number (char/misc devices only).
+    5: major uint32;
+    /// Device minor number (char/misc devices only).
+    6: minor uint32;
+    /// Whether the node has read support.
+    7: readable bool;
+    /// Whether the node has write support.
+    8: writable bool;
+    /// Whether the node has ioctl support.
+    9: has_ioctl bool;
+};
+
+/// Handle to an open device file.
+type DeviceHandle = resource table {
+    /// File descriptor number.
+    1: fd uint32;
+    /// Path of the opened device.
+    2: path string:1024;
+};
+
+/// Result of a read operation.
+type ReadResult = table {
+    /// Bytes read.
+    1: data vector<byte>:MAX;
+    /// New file position.
+    2: offset uint64;
+};
+
+/// Unified virtual filesystem protocol.
+///
+/// Serves /dev, /sys, and /proc trees populated by loaded .ko modules.
+/// This is the primary interface for Fuchsia components to interact
+/// with Linux kernel module state.
+@discoverable
+protocol Vfs {
+    /// List entries at a path.
+    /// Returns entries in the directory, or the single node if path
+    /// is a leaf.  Works for /dev, /sys, and /proc.
+    flexible List(struct {
+        path string:1024;
+    }) -> (struct {
+        entries vector<VfsNodeInfo>:MAX;
+    }) error zx.Status;
+
+    /// Get information about a single node.
+    flexible Stat(struct {
+        path string:1024;
+    }) -> (VfsNodeInfo) error zx.Status;
+
+    /// Read contents of a /proc or /sys entry.
+    /// For proc entries, dispatches to the module's file_operations->read
+    /// or single_show callback.  For sysfs, dispatches to the show callback.
+    flexible Read(struct {
+        path string:1024;
+        count uint64;
+    }) -> (ReadResult) error zx.Status;
+
+    /// Write to a /proc or /sys entry.
+    /// For proc entries, dispatches to the module's file_operations->write.
+    /// For sysfs, dispatches to the store callback.
+    flexible Write(struct {
+        path string:1024;
+        data vector<byte>:MAX;
+    }) -> (struct {
+        bytes_written uint64;
+    }) error zx.Status;
+
+    /// Open a /dev device node.
+    /// Allocates a file descriptor and calls the module's fops->open.
+    flexible Open(struct {
+        path string:1024;
+        flags uint32;
+    }) -> (DeviceHandle) error zx.Status;
+
+    /// Read from an open device.
+    flexible DeviceRead(struct {
+        fd uint32;
+        count uint64;
+    }) -> (ReadResult) error zx.Status;
+
+    /// Write to an open device.
+    flexible DeviceWrite(struct {
+        fd uint32;
+        data vector<byte>:MAX;
+    }) -> (struct {
+        bytes_written uint64;
+    }) error zx.Status;
+
+    /// Send ioctl to an open device.
+    flexible DeviceIoctl(struct {
+        fd uint32;
+        command uint32;
+        argument uint64;
+    }) -> (struct {
+        result int64;
+    }) error zx.Status;
+
+    /// Close an open device.
+    flexible DeviceClose(struct {
+        fd uint32;
+    }) -> () error zx.Status;
+
+    /// Get the full virtual filesystem tree (for debugging).
+    flexible GetTree() -> (struct {
+        tree string:MAX;
+    }) error zx.Status;
+};

@@ -184,6 +184,8 @@ SOURCES=(
   src/shim/subsystem/kunit.cc
   src/shim/subsystem/rfkill.cc
   src/shim/subsystem/rfkill_server.cc
+  src/shim/subsystem/vfs_service.cc
+  src/shim/subsystem/vfs_server.cc
   src/shim/kernel/rfkill_stubs.cc
 )
 
