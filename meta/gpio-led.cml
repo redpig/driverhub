@@ -1,0 +1,29 @@
+// Copyright 2024 The DriverHub Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+// Component manifest for the GPIO LED driver.
+//
+// This is a native Fuchsia DFv2 driver that consumes a GPIO pin provided
+// by a .ko module loaded through DriverHub. It demonstrates the composite
+// binding pattern: a native driver consuming a Linux-kernel-backed service.
+{
+    include: [
+        "driver_component/driver.shard.cml",
+        "inspect/client.shard.cml",
+        "syslog/client.shard.cml",
+    ],
+    program: {
+        runner: "driver",
+        binary: "driver/gpio-led.so",
+        bind: "meta/bind/gpio-led.bindbc",
+        colocate: "false",
+    },
+    use: [
+        {
+            // GPIO pin from the DriverHub service bridge.
+            // Backed by a .ko GPIO controller module's gpio_chip callbacks.
+            service: "fuchsia.hardware.gpio.Service",
+        },
+    ],
+}

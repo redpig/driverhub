@@ -119,6 +119,44 @@ fuchsia_driver_component("driverhub-component") {
 }
 
 # ---------------------------------------------------------------------------
+# GPIO LED driver — native DFv2 consumer of .ko GPIO provider
+# ---------------------------------------------------------------------------
+
+driver_bind_rules("gpio-led-bind") {
+  rules = "meta/gpio-led.bind"
+  deps = [
+    "//src/devices/bind/fuchsia.gpio",
+  ]
+}
+
+fuchsia_driver("gpio-led-driver") {
+  output_name = "gpio-led"
+
+  sources = [
+    "src/fuchsia/gpio_led_driver.cc",
+    "src/fuchsia/gpio_led_driver.h",
+  ]
+
+  deps = [
+    ":gpio-led-bind",
+    "//sdk/fidl/fuchsia.hardware.gpio:fuchsia.hardware.gpio_cpp",
+    "//sdk/lib/driver/component/cpp",
+    "//sdk/lib/driver/incoming/cpp",
+  ]
+
+  include_dirs = [
+    ".",
+    "src/shim/include",
+  ]
+}
+
+fuchsia_driver_component("gpio-led-component") {
+  component_name = "gpio-led"
+  manifest = "meta/gpio-led.cml"
+  deps = [ ":gpio-led-driver" ]
+}
+
+# ---------------------------------------------------------------------------
 # KMI shim shared library — loaded into each .ko module process.
 # ---------------------------------------------------------------------------
 

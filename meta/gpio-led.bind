@@ -1,0 +1,19 @@
+// Copyright 2024 The DriverHub Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+// Bind rules for the GPIO LED driver.
+//
+// This driver binds to a GPIO pin node created by the DriverHub service
+// bridge when a .ko GPIO controller module registers a gpio_chip.
+//
+// The composite node spec:
+//   Primary: driverhub/gpio_controller_module/gpio-5
+//     offers: fuchsia.hardware.gpio.Service
+//
+// This demonstrates a native Fuchsia DFv2 driver binding to a service
+// provided by a Linux kernel module loaded through DriverHub.
+
+using fuchsia.gpio;
+
+fuchsia.gpio.FUNCTION == fuchsia.gpio.FUNCTION.LED;

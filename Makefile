@@ -125,6 +125,7 @@ GPIO_CTRL_KO := tests/gpio_controller_module.ko
 TS_COMPOSITE_KO := tests/touchscreen_composite_module.ko
 BOOTFS_GPIO_DEMO := tests/bootfs_gpio_demo
 COMPOSITE_DEMO := tests/composite_demo
+NATIVE_COMPOSITE_DEMO := tests/native_composite_demo
 RTC_OPS_TEST := tests/rtc_ops_test
 DT_RTC_TEST := tests/dt_rtc_test
 DEP_SORT_TEST := tests/dependency_sort_test
@@ -132,7 +133,7 @@ MODINFO_TEST := tests/modinfo_parser_test
 SYMREG_TEST := tests/symbol_registry_test
 LOADER_TEST := tests/loader_test
 
-.PHONY: all clean test test-rtc test-rtc-cmos test-gki test-rtc-ops test-dt-rtc test-intermodule test-gpio test-gpio-ctrl test-dep-sort test-modinfo test-symreg test-loader test-all test-bootfs-gpio test-composite
+.PHONY: all clean test test-rtc test-rtc-cmos test-gki test-rtc-ops test-dt-rtc test-intermodule test-gpio test-gpio-ctrl test-dep-sort test-modinfo test-symreg test-loader test-all test-bootfs-gpio test-composite test-native-composite
 
 all: $(TARGET) $(GKI_TARGET)
 
@@ -169,6 +170,9 @@ test-bootfs-gpio: $(BOOTFS_GPIO_DEMO) $(GPIO_CTRL_KO)
 test-composite: $(COMPOSITE_DEMO) $(GPIO_CTRL_KO) $(TS_COMPOSITE_KO)
 	./$(COMPOSITE_DEMO) $(GPIO_CTRL_KO) $(TS_COMPOSITE_KO)
 
+test-native-composite: $(NATIVE_COMPOSITE_DEMO) $(GPIO_CTRL_KO)
+	./$(NATIVE_COMPOSITE_DEMO) $(GPIO_CTRL_KO)
+
 test-dep-sort: $(DEP_SORT_TEST)
 	./$(DEP_SORT_TEST)
 
@@ -181,7 +185,7 @@ test-symreg: $(SYMREG_TEST)
 test-loader: $(LOADER_TEST) $(TEST_KO) $(EXPORT_KO) $(IMPORT_KO) $(DATA_EXPORT_KO) $(DATA_IMPORT_KO)
 	./$(LOADER_TEST)
 
-test-all: test test-rtc test-rtc-ops test-dt-rtc test-intermodule test-gpio test-gpio-ctrl test-bootfs-gpio test-composite test-dep-sort test-modinfo test-symreg test-loader test-gki
+test-all: test test-rtc test-rtc-ops test-dt-rtc test-intermodule test-gpio test-gpio-ctrl test-bootfs-gpio test-composite test-native-composite test-dep-sort test-modinfo test-symreg test-loader test-gki
 	@echo ""
 	@echo "=== All tests passed ==="
 
@@ -210,6 +214,9 @@ $(BOOTFS_GPIO_DEMO): src/fuchsia/bootfs_gpio_demo.cc $(LIB_OBJS)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ -lpthread
 
 $(COMPOSITE_DEMO): src/fuchsia/composite_demo.cc $(LIB_OBJS)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ -lpthread
+
+$(NATIVE_COMPOSITE_DEMO): src/fuchsia/native_composite_demo.cc $(LIB_OBJS)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ -lpthread
 
 $(DATA_EXPORT_KO): tests/data_export_module.c
@@ -261,4 +268,5 @@ clean:
 		$(DATA_EXPORT_KO) $(DATA_IMPORT_KO) \
 		$(RTC_OPS_TEST) $(DT_RTC_TEST) $(DEP_SORT_TEST) $(MODINFO_TEST) \
 		$(SYMREG_TEST) $(LOADER_TEST) \
-		$(GPIO_CTRL_KO) $(TS_COMPOSITE_KO) $(BOOTFS_GPIO_DEMO) $(COMPOSITE_DEMO)
+		$(GPIO_CTRL_KO) $(TS_COMPOSITE_KO) $(BOOTFS_GPIO_DEMO) $(COMPOSITE_DEMO) \
+		$(NATIVE_COMPOSITE_DEMO)
