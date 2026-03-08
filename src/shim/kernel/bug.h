@@ -61,6 +61,10 @@ void driverhub_warn(const char *file, int line, const char *func,
                     const char *fmt, ...)
     __attribute__((format(printf, 4, 5)));
 
+// Stack protector — needed by GKI modules compiled with -fstack-protector.
+void __stack_chk_fail(void) __attribute__((noreturn));
+extern unsigned long __stack_chk_guard;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

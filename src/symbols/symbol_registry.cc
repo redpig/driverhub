@@ -39,8 +39,23 @@
 #include "src/shim/subsystem/pwm.h"
 #include "src/shim/subsystem/led.h"
 
-// Forward declarations for RTC, timer, and ABI-compat shim symbols.
+// Forward declarations for RTC, timer, ABI-compat, and kunit shim symbols.
 extern "C" {
+// kunit
+struct kunit;
+void __kunit_do_failed_assertion(struct kunit* test,
+                                 const void* assert_struct,
+                                 int type,
+                                 const char* file, int line,
+                                 const char* fmt, ...);
+void __kunit_abort(struct kunit* test);
+void kunit_binary_assert_format(const void* assert_data,
+                                const void* message,
+                                char* buf, int buf_len);
+
+// time64_to_tm
+void time64_to_tm(long long totalsecs, int offset, void* result);
+
 // rtc.h
 struct rtc_device;
 struct rtc_time;
@@ -255,6 +270,22 @@ void SymbolRegistry::RegisterKmiSymbols() {
   REGISTER_SYMBOL(driverhub_bug);
   REGISTER_SYMBOL(driverhub_warn);
   REGISTER_SYMBOL(panic);
+  // __warn_printk — used by GKI modules for WARN() output.
+  Register("__warn_printk", reinterpret_cast<void*>(
+      reinterpret_cast<uintptr_t>(&printk)));
+
+  // Stack protector
+  REGISTER_SYMBOL(__stack_chk_fail);
+  Register("__stack_chk_guard", reinterpret_cast<void*>(
+      reinterpret_cast<uintptr_t>(&__stack_chk_guard)));
+
+  // KUnit test framework
+  REGISTER_SYMBOL(__kunit_do_failed_assertion);
+  REGISTER_SYMBOL(__kunit_abort);
+  REGISTER_SYMBOL(kunit_binary_assert_format);
+
+  // Time — time64_to_tm (non-RTC variant, used by time_test.ko)
+  REGISTER_SYMBOL(time64_to_tm);
 
   // I2C subsystem
   REGISTER_SYMBOL(i2c_add_driver);

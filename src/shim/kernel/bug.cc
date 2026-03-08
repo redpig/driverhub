@@ -50,4 +50,13 @@ void panic(const char* fmt, ...) {
   abort();
 }
 
+void __stack_chk_fail(void) {
+  fprintf(stderr,
+          "\n[driverhub][FATAL] stack-protector: buffer overflow detected!\n");
+  abort();
+}
+
+// GCC/Clang may also reference __stack_chk_guard.
+unsigned long __stack_chk_guard = 0xDEADBEEFDEADBEEFUL;
+
 }  // extern "C"

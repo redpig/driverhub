@@ -49,7 +49,8 @@ LIB_SRCS := \
 	src/shim/subsystem/nvmem.cc \
 	src/shim/subsystem/power_supply.cc \
 	src/shim/subsystem/pwm.cc \
-	src/shim/subsystem/led.cc
+	src/shim/subsystem/led.cc \
+	src/shim/subsystem/kunit.cc
 
 SRCS := src/main.cc $(LIB_SRCS)
 OBJS := $(SRCS:.cc=.o)
@@ -105,7 +106,8 @@ GKI_SRCS := \
 	src/shim/subsystem/nvmem.cc \
 	src/shim/subsystem/power_supply.cc \
 	src/shim/subsystem/pwm.cc \
-	src/shim/subsystem/led.cc
+	src/shim/subsystem/led.cc \
+	src/shim/subsystem/kunit.cc
 
 GKI_OBJS := $(GKI_SRCS:.cc=.gki.o)
 GKI_TARGET := driverhub-gki

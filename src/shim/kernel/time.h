@@ -34,6 +34,13 @@ void usleep_range(unsigned long min_us, unsigned long max_us);
 ktime_t ktime_get(void);
 ktime_t ktime_get_real(void);
 
+// time64_to_tm: convert seconds since epoch to broken-down time.
+// Used by time_test.ko and other GKI modules.
+// The result parameter is a pointer to the Linux kernel's struct tm
+// (different from POSIX struct tm). Declared as void* here to avoid
+// header conflicts; the .ko module has the correct struct definition.
+void time64_to_tm(long long totalsecs, int offset, void *result);
+
 // ktime helpers (nanosecond based).
 static inline int64_t ktime_to_ns(ktime_t kt) { return kt; }
 static inline int64_t ktime_to_us(ktime_t kt) { return kt / 1000; }

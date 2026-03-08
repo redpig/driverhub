@@ -197,6 +197,7 @@ SOURCES=(
   src/shim/subsystem/power_supply.cc
   src/shim/subsystem/pwm.cc
   src/shim/subsystem/led.cc
+  src/shim/subsystem/kunit.cc
 )
 
 COMPILED=0

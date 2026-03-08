@@ -13,6 +13,9 @@ tests/bootfs_gpio_demo
 tests/composite_demo
 tests/native_composite_demo
 
+# Downloaded real GKI .ko modules (not committed per project guidelines)
+test_modules/
+
 # Editor files
 *.swp
 *~
