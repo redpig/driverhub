@@ -171,4 +171,53 @@ void input_set_capability(struct input_dev* dev, unsigned int type,
   }
 }
 
+// --- Input polling API (used by input_test.ko) ---
+
+void input_setup_polling(struct input_dev* dev,
+                          void (*poll)(struct input_dev*)) {
+  (void)dev;
+  (void)poll;
+  fprintf(stderr, "driverhub: input: setup polling\n");
+}
+
+void input_set_poll_interval(struct input_dev* dev, unsigned int interval_ms) {
+  (void)dev;
+  (void)interval_ms;
+}
+
+unsigned int input_get_poll_interval(struct input_dev* dev) {
+  (void)dev;
+  return 0;
+}
+
+void input_set_timestamp(struct input_dev* dev, long long timestamp) {
+  (void)dev;
+  (void)timestamp;
+}
+
+long long input_get_timestamp(struct input_dev* dev) {
+  (void)dev;
+  return 0;
+}
+
+int input_grab_device(void* handle) {
+  (void)handle;
+  return 0;
+}
+
+void input_release_device(void* handle) {
+  (void)handle;
+}
+
+int input_match_device_id(const struct input_dev* dev, const void* id) {
+  (void)dev;
+  (void)id;
+  return 1;  // Match.
+}
+
+// get_device: increment device refcount (generic kernel API).
+struct device* get_device(struct device* dev) {
+  return dev;  // No-op refcount in shim.
+}
+
 }  // extern "C"

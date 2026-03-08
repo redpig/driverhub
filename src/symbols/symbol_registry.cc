@@ -120,6 +120,58 @@ struct led_trigger;
 int led_trigger_register(struct led_trigger* trigger);
 void led_trigger_unregister(struct led_trigger* trigger);
 
+// clk_hw (clock provider) stubs
+struct clk_hw;
+struct clk_hw* __clk_hw_register_gate(struct device* dev, const char* name,
+                                       const char* parent_name,
+                                       unsigned long flags,
+                                       void* reg, uint8_t bit_idx,
+                                       uint8_t clk_gate_flags, void* lock);
+struct clk_hw* __clk_hw_register_fixed_rate(struct device* dev,
+                                             const char* name,
+                                             const char* parent_name,
+                                             unsigned long flags,
+                                             unsigned long fixed_rate);
+const char* clk_hw_get_name(const struct clk_hw* hw);
+unsigned long clk_hw_get_flags(const struct clk_hw* hw);
+struct clk_hw* clk_hw_get_parent(struct clk_hw* hw);
+unsigned long clk_hw_get_rate(const struct clk_hw* hw);
+int clk_hw_is_enabled(const struct clk_hw* hw);
+int clk_hw_is_prepared(const struct clk_hw* hw);
+void clk_hw_unregister_gate(struct clk_hw* hw);
+void clk_hw_unregister_fixed_rate(struct clk_hw* hw);
+
+// platform_device_register_full
+struct platform_device_info;
+struct platform_device* platform_device_register_full(
+    const struct platform_device_info* pdevinfo);
+
+// input polling stubs
+void input_setup_polling(struct input_dev* dev,
+                          void (*poll)(struct input_dev*));
+void input_set_poll_interval(struct input_dev* dev, unsigned int interval_ms);
+unsigned int input_get_poll_interval(struct input_dev* dev);
+void input_set_timestamp(struct input_dev* dev, long long timestamp);
+long long input_get_timestamp(struct input_dev* dev);
+int input_grab_device(void* handle);
+void input_release_device(void* handle);
+int input_match_device_id(const struct input_dev* dev, const void* id);
+struct device* get_device(struct device* dev);
+
+// kunit assert formatters
+void kunit_unary_assert_format(const void* assert_data,
+                                const void* message, char* buf, int buf_len);
+void kunit_ptr_not_err_assert_format(const void* assert_data,
+                                      const void* message, char* buf, int buf_len);
+void kunit_fail_assert_format(const void* assert_data,
+                               const void* message, char* buf, int buf_len);
+void kunit_binary_str_assert_format(const void* assert_data,
+                                     const void* message, char* buf, int buf_len);
+void kunit_binary_ptr_assert_format(const void* assert_data,
+                                     const void* message, char* buf, int buf_len);
+void* kunit_kmalloc_array(struct kunit* test, unsigned long n,
+                           unsigned long size, unsigned int gfp);
+
 // rfkill stubs (misc kernel APIs)
 void* dh_memcpy(void* dest, const void* src, unsigned long n);
 int dh_strcmp(const char* s1, const char* s2);
@@ -225,6 +277,7 @@ void SymbolRegistry::RegisterKmiSymbols() {
   REGISTER_SYMBOL(platform_device_add);
   REGISTER_SYMBOL(platform_device_put);
   REGISTER_SYMBOL(platform_device_unregister);
+  REGISTER_SYMBOL(platform_device_register_full);
 
   // Device-managed allocation
   REGISTER_SYMBOL(devm_kmalloc);
@@ -343,6 +396,12 @@ void SymbolRegistry::RegisterKmiSymbols() {
   REGISTER_SYMBOL(__kunit_do_failed_assertion);
   REGISTER_SYMBOL(__kunit_abort);
   REGISTER_SYMBOL(kunit_binary_assert_format);
+  REGISTER_SYMBOL(kunit_unary_assert_format);
+  REGISTER_SYMBOL(kunit_ptr_not_err_assert_format);
+  REGISTER_SYMBOL(kunit_fail_assert_format);
+  REGISTER_SYMBOL(kunit_binary_str_assert_format);
+  REGISTER_SYMBOL(kunit_binary_ptr_assert_format);
+  REGISTER_SYMBOL(kunit_kmalloc_array);
 
   // Time — time64_to_tm (non-RTC variant, used by time_test.ko)
   REGISTER_SYMBOL(time64_to_tm);
@@ -468,6 +527,17 @@ void SymbolRegistry::RegisterKmiSymbols() {
   REGISTER_SYMBOL(input_mt_sync_frame);
   REGISTER_SYMBOL(input_set_abs_params);
   REGISTER_SYMBOL(input_set_capability);
+
+  // Input polling / utility
+  REGISTER_SYMBOL(input_setup_polling);
+  REGISTER_SYMBOL(input_set_poll_interval);
+  REGISTER_SYMBOL(input_get_poll_interval);
+  REGISTER_SYMBOL(input_set_timestamp);
+  REGISTER_SYMBOL(input_get_timestamp);
+  REGISTER_SYMBOL(input_grab_device);
+  REGISTER_SYMBOL(input_release_device);
+  REGISTER_SYMBOL(input_match_device_id);
+  REGISTER_SYMBOL(get_device);
 
   // cfg80211/mac80211 WiFi subsystem
   REGISTER_SYMBOL(wiphy_new);
@@ -643,6 +713,18 @@ void SymbolRegistry::RegisterKmiSymbols() {
   REGISTER_SYMBOL(clk_get_rate);
   REGISTER_SYMBOL(clk_set_rate);
   REGISTER_SYMBOL(clk_round_rate);
+
+  // Clock provider (clk_hw) API
+  REGISTER_SYMBOL(__clk_hw_register_gate);
+  REGISTER_SYMBOL(__clk_hw_register_fixed_rate);
+  REGISTER_SYMBOL(clk_hw_get_name);
+  REGISTER_SYMBOL(clk_hw_get_flags);
+  REGISTER_SYMBOL(clk_hw_get_parent);
+  REGISTER_SYMBOL(clk_hw_get_rate);
+  REGISTER_SYMBOL(clk_hw_is_enabled);
+  REGISTER_SYMBOL(clk_hw_is_prepared);
+  REGISTER_SYMBOL(clk_hw_unregister_gate);
+  REGISTER_SYMBOL(clk_hw_unregister_fixed_rate);
 
   // Regulator API
   REGISTER_SYMBOL(regulator_get);

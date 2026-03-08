@@ -177,4 +177,23 @@ int device_init_wakeup(struct device* /*dev*/, int /*enable*/) {
   return 0;
 }
 
+// platform_device_register_full — allocates and registers a platform device
+// from a platform_device_info struct.  Used by test modules.
+struct platform_device* platform_device_register_full(
+    const struct platform_device_info* pdevinfo) {
+  if (!pdevinfo) return reinterpret_cast<struct platform_device*>((long)-22);
+
+  const char* name = pdevinfo->name ? pdevinfo->name : "unknown";
+  struct platform_device* pdev = platform_device_alloc(name, pdevinfo->id);
+  if (!pdev)
+    return reinterpret_cast<struct platform_device*>((long)-12);
+
+  int ret = platform_device_add(pdev);
+  if (ret) {
+    platform_device_put(pdev);
+    return reinterpret_cast<struct platform_device*>((long)ret);
+  }
+  return pdev;
+}
+
 }  // extern "C"

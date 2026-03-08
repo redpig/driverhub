@@ -82,6 +82,30 @@ void pm_runtime_get_noresume(struct device* dev);
 void pm_runtime_put_noidle(struct device* dev);
 int pm_runtime_suspended(struct device* dev);
 
+// --- clk_hw API (clock provider) ---
+
+struct clk_hw;
+
+struct clk_hw* __clk_hw_register_gate(struct device* dev, const char* name,
+                                       const char* parent_name,
+                                       unsigned long flags,
+                                       void* reg, uint8_t bit_idx,
+                                       uint8_t clk_gate_flags,
+                                       void* lock);
+struct clk_hw* __clk_hw_register_fixed_rate(struct device* dev,
+                                             const char* name,
+                                             const char* parent_name,
+                                             unsigned long flags,
+                                             unsigned long fixed_rate);
+const char* clk_hw_get_name(const struct clk_hw* hw);
+unsigned long clk_hw_get_flags(const struct clk_hw* hw);
+struct clk_hw* clk_hw_get_parent(struct clk_hw* hw);
+unsigned long clk_hw_get_rate(const struct clk_hw* hw);
+int clk_hw_is_enabled(const struct clk_hw* hw);
+int clk_hw_is_prepared(const struct clk_hw* hw);
+void clk_hw_unregister_gate(struct clk_hw* hw);
+void clk_hw_unregister_fixed_rate(struct clk_hw* hw);
+
 // --- PM (suspend/resume) ---
 
 // Power management message type (simplified).

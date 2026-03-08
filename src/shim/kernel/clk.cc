@@ -255,4 +255,92 @@ int pm_runtime_suspended(struct device* dev) {
   return 0;  // Not suspended.
 }
 
+// --- clk_hw API ---
+// Used by clock provider drivers and their tests (e.g., clk-gate_test.ko).
+// In userspace, these are stubs that track minimal state.
+
+struct clk_hw {
+  const char* name;
+  unsigned long rate;
+  int enabled;
+  int prepared;
+  unsigned long flags;
+  struct clk_hw* parent;
+};
+
+struct clk_hw* __clk_hw_register_gate(struct device* dev, const char* name,
+                                       const char* parent_name,
+                                       unsigned long flags,
+                                       void* reg, uint8_t bit_idx,
+                                       uint8_t clk_gate_flags,
+                                       void* lock) {
+  (void)dev; (void)parent_name; (void)reg; (void)bit_idx;
+  (void)clk_gate_flags; (void)lock;
+  auto* hw = static_cast<struct clk_hw*>(calloc(1, sizeof(struct clk_hw)));
+  if (!hw) return reinterpret_cast<struct clk_hw*>((long)-12);
+  hw->name = name;
+  hw->flags = flags;
+  hw->rate = 200000000;
+  fprintf(stderr, "driverhub: clk_hw: register gate '%s'\n", name ? name : "");
+  return hw;
+}
+
+struct clk_hw* __clk_hw_register_fixed_rate(struct device* dev,
+                                             const char* name,
+                                             const char* parent_name,
+                                             unsigned long flags,
+                                             unsigned long fixed_rate) {
+  (void)dev; (void)parent_name;
+  auto* hw = static_cast<struct clk_hw*>(calloc(1, sizeof(struct clk_hw)));
+  if (!hw) return reinterpret_cast<struct clk_hw*>((long)-12);
+  hw->name = name;
+  hw->flags = flags;
+  hw->rate = fixed_rate;
+  fprintf(stderr, "driverhub: clk_hw: register fixed_rate '%s' rate=%lu\n",
+          name ? name : "", fixed_rate);
+  return hw;
+}
+
+const char* clk_hw_get_name(const struct clk_hw* hw) {
+  if (!hw) return "(null)";
+  return hw->name ? hw->name : "(unnamed)";
+}
+
+unsigned long clk_hw_get_flags(const struct clk_hw* hw) {
+  if (!hw) return 0;
+  return hw->flags;
+}
+
+struct clk_hw* clk_hw_get_parent(struct clk_hw* hw) {
+  if (!hw) return nullptr;
+  return hw->parent;
+}
+
+unsigned long clk_hw_get_rate(const struct clk_hw* hw) {
+  if (!hw) return 0;
+  return hw->rate;
+}
+
+int clk_hw_is_enabled(const struct clk_hw* hw) {
+  if (!hw) return 0;
+  return hw->enabled;
+}
+
+int clk_hw_is_prepared(const struct clk_hw* hw) {
+  if (!hw) return 0;
+  return hw->prepared;
+}
+
+void clk_hw_unregister_gate(struct clk_hw* hw) {
+  fprintf(stderr, "driverhub: clk_hw: unregister gate '%s'\n",
+          hw && hw->name ? hw->name : "");
+  free(hw);
+}
+
+void clk_hw_unregister_fixed_rate(struct clk_hw* hw) {
+  fprintf(stderr, "driverhub: clk_hw: unregister fixed_rate '%s'\n",
+          hw && hw->name ? hw->name : "");
+  free(hw);
+}
+
 }  // extern "C"

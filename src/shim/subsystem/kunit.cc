@@ -15,6 +15,7 @@
 
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 extern "C" {
@@ -66,6 +67,59 @@ void kunit_binary_assert_format(const struct kunit_assert* assert_data,
     snprintf(buf, static_cast<size_t>(buf_len),
              "[kunit binary assertion failed]");
   }
+}
+
+// Additional kunit assert format functions used by input_test.ko, clk-gate_test.ko.
+void kunit_unary_assert_format(const struct kunit_assert* assert_data,
+                                const struct va_format* message,
+                                char* buf, int buf_len) {
+  (void)assert_data;
+  (void)message;
+  if (buf && buf_len > 0)
+    snprintf(buf, static_cast<size_t>(buf_len), "[kunit unary assertion failed]");
+}
+
+void kunit_ptr_not_err_assert_format(const struct kunit_assert* assert_data,
+                                      const struct va_format* message,
+                                      char* buf, int buf_len) {
+  (void)assert_data;
+  (void)message;
+  if (buf && buf_len > 0)
+    snprintf(buf, static_cast<size_t>(buf_len), "[kunit ptr not err assertion failed]");
+}
+
+void kunit_fail_assert_format(const struct kunit_assert* assert_data,
+                               const struct va_format* message,
+                               char* buf, int buf_len) {
+  (void)assert_data;
+  (void)message;
+  if (buf && buf_len > 0)
+    snprintf(buf, static_cast<size_t>(buf_len), "[kunit fail assertion]");
+}
+
+void kunit_binary_str_assert_format(const struct kunit_assert* assert_data,
+                                     const struct va_format* message,
+                                     char* buf, int buf_len) {
+  (void)assert_data;
+  (void)message;
+  if (buf && buf_len > 0)
+    snprintf(buf, static_cast<size_t>(buf_len), "[kunit binary str assertion failed]");
+}
+
+void kunit_binary_ptr_assert_format(const struct kunit_assert* assert_data,
+                                     const struct va_format* message,
+                                     char* buf, int buf_len) {
+  (void)assert_data;
+  (void)message;
+  if (buf && buf_len > 0)
+    snprintf(buf, static_cast<size_t>(buf_len), "[kunit binary ptr assertion failed]");
+}
+
+void* kunit_kmalloc_array(struct kunit* test, unsigned long n,
+                           unsigned long size, unsigned int gfp) {
+  (void)test;
+  (void)gfp;
+  return calloc(n, size);
 }
 
 }  // extern "C"

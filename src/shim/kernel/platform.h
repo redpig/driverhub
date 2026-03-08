@@ -46,6 +46,16 @@ struct platform_driver {
   } driver;
 };
 
+// platform_device_info — used by platform_device_register_full().
+struct platform_device_info {
+  const char* name;
+  int id;
+  const void* data;
+  unsigned long size_data;
+  unsigned int num_res;
+  const struct resource* res;
+};
+
 int platform_driver_register(struct platform_driver* drv);
 void platform_driver_unregister(struct platform_driver* drv);
 
@@ -58,6 +68,9 @@ void platform_device_unregister(struct platform_device* pdev);
 struct resource* platform_get_resource(struct platform_device* pdev,
                                        unsigned int type, unsigned int num);
 int platform_get_irq(struct platform_device* pdev, unsigned int num);
+
+struct platform_device* platform_device_register_full(
+    const struct platform_device_info* pdevinfo);
 
 static inline void* platform_get_drvdata(const struct platform_device* pdev) {
   return dev_get_drvdata(&pdev->dev);
