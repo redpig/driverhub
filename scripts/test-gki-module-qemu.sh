@@ -182,6 +182,8 @@ SOURCES=(
   src/shim/subsystem/pwm.cc
   src/shim/subsystem/led.cc
   src/shim/subsystem/kunit.cc
+  src/shim/subsystem/rfkill.cc
+  src/shim/subsystem/rfkill_server.cc
   src/shim/kernel/rfkill_stubs.cc
 )
 

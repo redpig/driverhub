@@ -13,6 +13,7 @@
 #include <cstdlib>
 
 #include "src/bus_driver/bus_driver.h"
+#include "src/shim/subsystem/rfkill_server.h"
 
 #if defined(__Fuchsia__)
 #include "src/fuchsia/resource_provider.h"
@@ -49,9 +50,14 @@ int main(int argc, char** argv) {
   }
 
   fprintf(stderr, "\n--- %zu module(s) loaded ---\n", bus.module_count());
+
+  // Start the rfkill IPC server so rfkillctl can query/control radios.
+  driverhub::StartRfkillServer();
+
   fprintf(stderr, "Press Enter to unload and exit...\n");
   getchar();
 
+  driverhub::StopRfkillServer();
   bus.Shutdown();
   return 0;
 }

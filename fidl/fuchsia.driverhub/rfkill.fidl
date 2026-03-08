@@ -1,0 +1,93 @@
+// Copyright 2024 The DriverHub Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+/// FIDL protocol for controlling RF kill switches via DriverHub.
+///
+/// The rfkill.ko GKI module provides the Linux rfkill subsystem which
+/// manages software and hardware radio kill switches.  This FIDL protocol
+/// exposes that state to Fuchsia userspace so that components can list,
+/// block, and unblock wireless radios.
+///
+/// The DriverHub shim layer serves this protocol when rfkill.ko is loaded.
+library fuchsia.driverhub;
+
+using zx;
+
+/// Type of wireless radio managed by rfkill.
+/// Matches the Linux RFKILL_TYPE_* constants.
+type RfkillType = flexible enum : uint8 {
+    ALL = 0;
+    WLAN = 1;
+    BLUETOOTH = 2;
+    UWB = 3;
+    WIMAX = 4;
+    WWAN = 5;
+    GPS = 6;
+    FM = 7;
+    NFC = 8;
+};
+
+/// Block state of a radio.
+type RfkillState = table {
+    /// Software block (can be toggled by userspace).
+    1: soft_blocked bool;
+    /// Hardware block (read-only, driven by physical switch).
+    2: hard_blocked bool;
+};
+
+/// Information about a registered rfkill radio.
+type RadioInfo = table {
+    /// Unique index of this radio within the rfkill subsystem.
+    1: index uint32;
+    /// Radio type (WLAN, BLUETOOTH, etc.).
+    2: radio_type RfkillType;
+    /// Human-readable name (e.g. "phy0", "hci0").
+    3: name string:256;
+    /// Current block state.
+    4: state RfkillState;
+};
+
+/// An event describing a change in radio state.
+type RadioEvent = table {
+    /// Index of the radio whose state changed.
+    1: index uint32;
+    /// Radio type.
+    2: radio_type RfkillType;
+    /// New block state after the change.
+    3: state RfkillState;
+};
+
+/// Protocol for querying and controlling RF kill switches.
+///
+/// Served by the DriverHub rfkill shim when rfkill.ko is loaded.
+/// Client tools (rfkillctl) and system components connect to this
+/// protocol to manage wireless radios.
+@discoverable
+protocol Rfkill {
+    /// List all registered radios and their current block state.
+    flexible GetRadios() -> (struct {
+        radios vector<RadioInfo>:256;
+    }) error zx.Status;
+
+    /// Set the software block state for a radio by index.
+    /// Returns ZX_ERR_NOT_FOUND if the index is invalid.
+    flexible SetSoftBlock(struct {
+        index uint32;
+        blocked bool;
+    }) -> () error zx.Status;
+
+    /// Set the software block state for all radios of a given type.
+    /// Use RfkillType.ALL to block/unblock every radio.
+    flexible SetSoftBlockAll(struct {
+        radio_type RfkillType;
+        blocked bool;
+    }) -> () error zx.Status;
+
+    /// Hanging get: returns when a radio's state changes.
+    /// The first call returns immediately with the current state of all
+    /// radios.  Subsequent calls block until a state change occurs.
+    flexible WatchState() -> (struct {
+        events vector<RadioEvent>:256;
+    }) error zx.Status;
+};
