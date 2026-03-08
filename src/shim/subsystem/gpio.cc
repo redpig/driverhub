@@ -44,6 +44,26 @@ std::mutex g_gpio_mu;
 std::unordered_map<unsigned, GpioState> g_gpios;
 std::unordered_map<unsigned, struct gpio_desc> g_gpio_descs;
 
+// Global registry of GPIO chips.
+std::vector<struct gpio_chip*>& registered_chips() {
+  static std::vector<struct gpio_chip*> chips;
+  return chips;
+}
+
+// Find the gpio_chip that owns the given global GPIO number.
+// Returns the chip and sets `offset` to the pin offset within that chip.
+// Caller must hold g_gpio_mu.
+struct gpio_chip* find_chip_for_gpio(unsigned gpio, unsigned* offset) {
+  for (auto* gc : registered_chips()) {
+    unsigned base = static_cast<unsigned>(gc->base);
+    if (gpio >= base && gpio < base + gc->ngpio) {
+      *offset = gpio - base;
+      return gc;
+    }
+  }
+  return nullptr;
+}
+
 }  // namespace
 
 extern "C" {
@@ -63,6 +83,16 @@ int gpio_request(unsigned gpio, const char* label) {
   state.label = label;
   fprintf(stderr, "driverhub: gpio: requested GPIO %u (%s)\n",
           gpio, label ? label : "");
+
+  unsigned offset;
+  struct gpio_chip* gc = find_chip_for_gpio(gpio, &offset);
+  if (gc && gc->request) {
+    int ret = gc->request(gc, offset);
+    if (ret) {
+      state.requested = false;
+      return ret;
+    }
+  }
   return 0;
 }
 
@@ -75,6 +105,11 @@ void gpio_free(unsigned gpio) {
 int gpio_direction_input(unsigned gpio) {
   std::lock_guard<std::mutex> lock(g_gpio_mu);
   g_gpios[gpio].is_output = false;
+
+  unsigned offset;
+  struct gpio_chip* gc = find_chip_for_gpio(gpio, &offset);
+  if (gc && gc->direction_input)
+    return gc->direction_input(gc, offset);
   return 0;
 }
 
@@ -82,11 +117,22 @@ int gpio_direction_output(unsigned gpio, int value) {
   std::lock_guard<std::mutex> lock(g_gpio_mu);
   g_gpios[gpio].is_output = true;
   g_gpios[gpio].value = value;
+
+  unsigned offset;
+  struct gpio_chip* gc = find_chip_for_gpio(gpio, &offset);
+  if (gc && gc->direction_output)
+    return gc->direction_output(gc, offset, value);
   return 0;
 }
 
 int gpio_get_value(unsigned gpio) {
   std::lock_guard<std::mutex> lock(g_gpio_mu);
+
+  unsigned offset;
+  struct gpio_chip* gc = find_chip_for_gpio(gpio, &offset);
+  if (gc && gc->get)
+    return gc->get(gc, offset);
+
   auto it = g_gpios.find(gpio);
   return (it != g_gpios.end()) ? it->second.value : 0;
 }
@@ -94,10 +140,22 @@ int gpio_get_value(unsigned gpio) {
 void gpio_set_value(unsigned gpio, int value) {
   std::lock_guard<std::mutex> lock(g_gpio_mu);
   g_gpios[gpio].value = value;
+
+  unsigned offset;
+  struct gpio_chip* gc = find_chip_for_gpio(gpio, &offset);
+  if (gc && gc->set)
+    gc->set(gc, offset, value);
 }
 
 int gpio_to_irq(unsigned gpio) {
-  // Simulated: IRQ number = GPIO number + 256 offset.
+  std::lock_guard<std::mutex> lock(g_gpio_mu);
+
+  unsigned offset;
+  struct gpio_chip* gc = find_chip_for_gpio(gpio, &offset);
+  if (gc && gc->to_irq)
+    return gc->to_irq(gc, offset);
+
+  // Fallback: simulated IRQ number = GPIO number + 256 offset.
   return static_cast<int>(gpio + 256);
 }
 
@@ -182,13 +240,6 @@ int gpiod_to_irq(const struct gpio_desc* desc) {
 // GPIO chip (controller) registration — linux/gpio/driver.h
 // ---------------------------------------------------------------------------
 
-// Global registry of GPIO chips. Protected by g_gpio_mu (same mutex as the
-// pin state table above).
-static std::vector<struct gpio_chip*>& registered_chips() {
-  static std::vector<struct gpio_chip*> chips;
-  return chips;
-}
-
 int gpiochip_add_data(struct gpio_chip* gc, void* data) {
   if (!gc) return -22;  // -EINVAL
 
@@ -210,9 +261,11 @@ int gpiochip_add_data(struct gpio_chip* gc, void* data) {
 
     // Wire the chip's callbacks into the per-pin state table so that
     // integer-GPIO API calls route through the chip ops.
+    // Note: requested=false — these pins are available but not yet claimed
+    // by a consumer. Consumer drivers call gpio_request() to claim them.
     for (unsigned i = 0; i < gc->ngpio; i++) {
       unsigned gpio = static_cast<unsigned>(gc->base) + i;
-      g_gpios[gpio] = {true, false, 0, gc->label};
+      g_gpios[gpio] = {false, false, 0, gc->label};
     }
 
     registered_chips().push_back(gc);
