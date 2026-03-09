@@ -15,9 +15,29 @@
 // Workqueue implementation using a single worker thread per workqueue.
 // schedule_work() uses a default global workqueue.
 //
-// On Fuchsia, these would map to async::Loop / async::PostTask.
+// The work_struct layout now matches the Linux GKI ABI: func is at
+// offset 0x18. The pending bit is encoded in work->data bit 0,
+// matching Linux's WORK_STRUCT_PENDING_BIT convention.
+//
+// TODO: On Fuchsia, convert to async::Loop / async::PostTask for native
+// integration with Zircon's event loop model.
 
 namespace {
+
+// Check whether work is already pending (bit 0 of data).
+inline bool work_is_pending(const struct work_struct* w) {
+  return (w->data & WORK_STRUCT_PENDING) != 0;
+}
+
+// Mark work as pending (set bit 0).
+inline void work_set_pending(struct work_struct* w) {
+  w->data |= WORK_STRUCT_PENDING;
+}
+
+// Clear pending bit (clear bit 0).
+inline void work_clear_pending(struct work_struct* w) {
+  w->data &= ~WORK_STRUCT_PENDING;
+}
 
 struct WorkqueueImpl {
   std::thread worker;
@@ -38,7 +58,9 @@ struct WorkqueueImpl {
         pending.pop_front();
       }
       if (w && w->func) {
-        w->_pending = 0;
+        work_clear_pending(w);
+        fprintf(stderr, "driverhub: workqueue: executing work %p func=%p\n",
+                (void*)w, (void*)(w->func));
         w->func(w);
       }
     }
@@ -67,16 +89,14 @@ int schedule_work(struct work_struct* work) {
 }
 
 int cancel_work_sync(struct work_struct* work) {
-  int was_pending = work->_pending;
-  work->_pending = 0;
+  int was_pending = work_is_pending(work);
+  work_clear_pending(work);
   // In a full implementation, we'd wait for any in-flight execution.
   return was_pending;
 }
 
 void flush_work(struct work_struct* work) {
   (void)work;
-  // Wait for the work item to complete. Simplified: no-op since our
-  // workqueue processes items immediately.
 }
 
 struct workqueue_struct* create_singlethread_workqueue(const char* name) {
@@ -100,8 +120,8 @@ void destroy_workqueue(struct workqueue_struct* wq) {
 
 int queue_work(struct workqueue_struct* wq, struct work_struct* work) {
   auto* impl = reinterpret_cast<WorkqueueImpl*>(wq);
-  if (work->_pending) return 0;  // Already queued.
-  work->_pending = 1;
+  if (work_is_pending(work)) return 0;  // Already queued.
+  work_set_pending(work);
   {
     std::lock_guard<std::mutex> lock(impl->mu);
     impl->pending.push_back(work);
@@ -114,7 +134,6 @@ int queue_delayed_work(struct workqueue_struct* wq,
                        struct delayed_work* dwork,
                        unsigned long delay) {
   (void)delay;  // Simplified: execute immediately.
-  // A full implementation would use a timer or async::PostDelayedTask.
   return queue_work(wq, &dwork->work);
 }
 
@@ -122,14 +141,19 @@ int cancel_delayed_work_sync(struct delayed_work* dwork) {
   return cancel_work_sync(&dwork->work);
 }
 
+int cancel_delayed_work(struct delayed_work* dwork) {
+  int was_pending = work_is_pending(&dwork->work);
+  work_clear_pending(&dwork->work);
+  return was_pending;
+}
+
 void flush_workqueue(struct workqueue_struct* wq) {
   (void)wq;
-  // Simplified: assumes items drain quickly.
 }
 
 int queue_work_on(int cpu, struct workqueue_struct* wq,
                   struct work_struct* work) {
-  (void)cpu;  // Ignore CPU affinity in userspace.
+  (void)cpu;
   return queue_work(wq, work);
 }
 
@@ -141,13 +165,10 @@ int queue_delayed_work_on(int cpu, struct workqueue_struct* wq,
 
 void delayed_work_timer_fn(struct work_struct* work) {
   (void)work;
-  // In Linux, this is the timer callback that queues the delayed_work.
-  // Our simplified delayed work executes immediately, so this is a no-op.
 }
 
 unsigned long round_jiffies_relative(unsigned long j) {
-  // Round to next full second (HZ jiffies) for power-efficient batching.
-  return j;  // Simplified: return as-is.
+  return j;
 }
 
 // Global workqueues — lazily initialized to the default workqueue.

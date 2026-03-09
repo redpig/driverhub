@@ -8,12 +8,14 @@
 //
 //   Phase 1: Load rfkill.ko via elfldltl — verifies ELF parsing, ARM64
 //            relocations, and symbol resolution against the KMI shim.
-//   Phase 2: Register test radios through the shim API (WiFi, BT, NFC).
-//   Phase 3: Exercise rfkillctl-equivalent operations via the RfkillService
-//            API directly (LIST, BLOCK, UNBLOCK, BLOCKALL, UNBLOCKALL,
-//            error handling). Uses the service API rather than Unix sockets
-//            since AF_UNIX is not available in minimal Fuchsia bootfs.
-//   Phase 4: Clean shutdown.
+//   Phase 2: Call init_module() — actually executes the module's init
+//            function, which calls class_register, misc_register,
+//            led_trigger_register, and queue_work_on. Validates that the
+//            ABI-compatible struct layouts (work_struct, mutex, etc.)
+//            allow real GKI module code to run in userspace.
+//   Phase 3: Register test radios through the shim API (WiFi, BT, NFC)
+//            and exercise rfkillctl-equivalent operations via RfkillService.
+//   Phase 4: Call cleanup_module() + clean shutdown.
 //
 // On Fuchsia bootfs: runs via zircon.autorun.boot.
 
@@ -23,6 +25,7 @@
 #include <string>
 #include <vector>
 
+#include "src/loader/module_executor.h"
 #include "src/loader/module_loader.h"
 #include "src/shim/subsystem/rfkill.h"
 #include "src/symbols/symbol_registry.h"
@@ -140,17 +143,39 @@ int main(int argc, char** argv) {
             module->info.license.c_str());
   }
 
-  // Note: We deliberately skip calling init_module because rfkill.ko's
-  // init touches kernel data structures (proc, sysfs internals) that
-  // require deeper shim coverage. The ELF load + full symbol resolution
-  // validates the loader pipeline; the service layer exercises the
-  // rfkillctl client path independently.
-
   // -----------------------------------------------------------------------
-  // Phase 2: Register test radios via the shim API
+  // Phase 2: Call init_module() — actually execute the module's init code
   // -----------------------------------------------------------------------
   fprintf(stderr,
-          "\n--- Phase 2: Register Test Radios ---\n");
+          "\n--- Phase 2: Call init_module() ---\n");
+
+  bool init_ok = false;
+  if (has_init) {
+    fprintf(stderr, "[rfkill-qemu] Calling init_module at %p...\n",
+            reinterpret_cast<void*>(module->init_fn));
+    int init_ret = driverhub::SafeCallInit(module->init_fn);
+    if (init_ret == driverhub::MODULE_EXEC_FAULT) {
+      fprintf(stderr, "[rfkill-qemu] init_module FAULTED (caught by handler)\n");
+    } else {
+      fprintf(stderr, "[rfkill-qemu] init_module returned %d\n", init_ret);
+      init_ok = (init_ret == 0);
+    }
+  } else {
+    fprintf(stderr, "[rfkill-qemu] SKIP: no init_fn found\n");
+  }
+
+  // Give the workqueue a moment to execute the queued LED trigger work.
+  // init_module queues rfkill_global_led_trigger_worker via queue_work_on.
+  fprintf(stderr, "[rfkill-qemu] Waiting for workqueue to drain...\n");
+  // Small busy-wait (no usleep on minimal Fuchsia bootfs).
+  for (volatile int i = 0; i < 5000000; i++) {}
+  fprintf(stderr, "[rfkill-qemu] Workqueue drain complete\n");
+
+  // -----------------------------------------------------------------------
+  // Phase 3: Register test radios via the shim API
+  // -----------------------------------------------------------------------
+  fprintf(stderr,
+          "\n--- Phase 3: Register Test Radios ---\n");
 
   // Simulate what real WiFi/BT/NFC drivers would do via rfkill API.
   void* wifi_rf = shim_rfkill_alloc("phy0-wifi", nullptr, 1 /*WLAN*/, nullptr,
@@ -172,13 +197,10 @@ int main(int argc, char** argv) {
           r1, r2, r3);
 
   // -----------------------------------------------------------------------
-  // Phase 3: Exercise rfkillctl-equivalent operations via RfkillService API
+  // Phase 4: Exercise rfkillctl-equivalent operations via RfkillService API
   // -----------------------------------------------------------------------
-  // Note: AF_UNIX is not available in minimal Fuchsia bootfs, so we test
-  // the RfkillService directly — the same logic that the IPC server and
-  // rfkillctl client exercise, validated on host via test-rfkill-service.sh.
   fprintf(stderr,
-          "\n--- Phase 3: RfkillService API Tests (rfkillctl equivalent) ---\n");
+          "\n--- Phase 4: RfkillService API Tests (rfkillctl equivalent) ---\n");
 
   auto& svc = driverhub::RfkillService::Instance();
 
@@ -248,10 +270,10 @@ int main(int argc, char** argv) {
           err_invalid ? "correctly rejected" : "unexpected success");
 
   // -----------------------------------------------------------------------
-  // Phase 4: Cleanup
+  // Phase 5: Cleanup — call cleanup_module + destroy test radios
   // -----------------------------------------------------------------------
   fprintf(stderr,
-          "\n--- Phase 4: Cleanup ---\n");
+          "\n--- Phase 5: Cleanup ---\n");
 
   shim_rfkill_unregister(wifi_rf);
   shim_rfkill_unregister(bt_rf);
@@ -259,6 +281,22 @@ int main(int argc, char** argv) {
   shim_rfkill_destroy(wifi_rf);
   shim_rfkill_destroy(bt_rf);
   shim_rfkill_destroy(nfc_rf);
+
+  // Call cleanup_module if init_module succeeded.
+  bool exit_ok = false;
+  if (init_ok && has_exit) {
+    fprintf(stderr, "[rfkill-qemu] Calling cleanup_module at %p...\n",
+            reinterpret_cast<void*>(module->exit_fn));
+    int exit_ret = driverhub::SafeCallExit(module->exit_fn);
+    if (exit_ret == driverhub::MODULE_EXEC_FAULT) {
+      fprintf(stderr, "[rfkill-qemu] cleanup_module FAULTED\n");
+    } else {
+      fprintf(stderr, "[rfkill-qemu] cleanup_module completed\n");
+      exit_ok = true;
+    }
+  } else if (!init_ok) {
+    fprintf(stderr, "[rfkill-qemu] SKIP cleanup_module (init failed)\n");
+  }
 
   fprintf(stderr, "[rfkill-qemu] Shutdown complete\n");
 
@@ -268,6 +306,7 @@ int main(int argc, char** argv) {
   check("rfkill.ko ELF loaded + symbols resolved", elf_loaded);
   check("init_fn entry point found", has_init);
   check("exit_fn entry point found", has_exit);
+  check("init_module() executed successfully", init_ok);
   check("rfkill_alloc succeeded", alloc_ok);
   check("rfkill_register succeeded", register_ok);
   check("LIST shows 3 radios", list_ok);
@@ -280,6 +319,7 @@ int main(int argc, char** argv) {
   check("BLOCKALL (airplane mode)", all_blocked);
   check("UNBLOCKALL wlan type filter", unblockall_wlan_ok);
   check("BLOCK invalid index returns ERR", err_invalid);
+  check("cleanup_module() executed successfully", exit_ok || !init_ok);
 
   bool all_pass = (g_fail == 0);
 

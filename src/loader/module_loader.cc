@@ -135,8 +135,9 @@ std::unique_ptr<LoadedModule> ModuleLoader::Load(std::string_view name,
     }
   }
 
-  // Count relocations that may need trampolines.
+  // Count relocations that may need trampolines or GOT entries.
   size_t trampoline_count = 0;
+  size_t got_entry_count = 0;
   for (uint16_t i = 0; i < shnum; i++) {
     if (shdrs[i].sh_type != SHT_RELA) continue;
     auto* relas = reinterpret_cast<const Elf64_Rela*>(
@@ -149,6 +150,10 @@ std::unique_ptr<LoadedModule> ModuleLoader::Load(std::string_view name,
       if (rtype == 274 || rtype == 283) {
         trampoline_count++;
       }
+      // R_AARCH64_ADR_PREL_PG_HI21 (275) — may need GOT entry if overflow
+      if (rtype == 275) {
+        got_entry_count++;
+      }
 #elif defined(__x86_64__)
       if (rtype == 2 || rtype == 4) {  // R_X86_64_PC32 or PLT32
         trampoline_count++;
@@ -159,17 +164,27 @@ std::unique_ptr<LoadedModule> ModuleLoader::Load(std::string_view name,
 #if defined(__aarch64__)
   // ARM64 trampoline: LDR X16, [PC+8]; BR X16; .quad <target>
   constexpr size_t kTrampolineSize = 16;
+  // GOT entry: 8 bytes holding the page address for overflowed ADRPs.
+  constexpr size_t kGotEntrySize = 8;
 #elif defined(__x86_64__)
   // x86_64 trampoline: jmp [rip+0]; .quad addr
   constexpr size_t kTrampolineSize = 14;
+  constexpr size_t kGotEntrySize = 8;
 #else
   constexpr size_t kTrampolineSize = 16;
+  constexpr size_t kGotEntrySize = 8;
 #endif
   size_t trampoline_space = trampoline_count * kTrampolineSize;
+  size_t got_space = got_entry_count * kGotEntrySize;
   // Align trampoline area to 16 bytes.
   total_alloc = (total_alloc + 15) & ~15UL;
   size_t trampoline_offset = total_alloc;
   total_alloc += trampoline_space;
+  // GOT entries follow trampolines, aligned to 8 bytes.
+  total_alloc = (total_alloc + 7) & ~7UL;
+  size_t got_offset = total_alloc;
+  total_alloc += got_space;
+  (void)got_offset;  // Used only on aarch64.
 
   // Allocate RWX memory for all loadable sections via the platform allocator.
   // On host this uses mmap; on Fuchsia this uses VMOs.
@@ -307,11 +322,62 @@ std::unique_ptr<LoadedModule> ModuleLoader::Load(std::string_view name,
         case 275: {  // R_AARCH64_ADR_PREL_PG_HI21
           int64_t page = static_cast<int64_t>(
               ((S + A) & ~0xFFFULL) - (P & ~0xFFFULL));
+          int64_t page_count = page >> 12;
           uint32_t insn = *reinterpret_cast<uint32_t*>(patch_addr);
-          uint32_t immlo = static_cast<uint32_t>((page >> 12) & 0x3);
-          uint32_t immhi = static_cast<uint32_t>((page >> 14) & 0x7FFFF);
-          insn = (insn & 0x9F00001Fu) | (immlo << 29) | (immhi << 5);
-          *reinterpret_cast<uint32_t*>(patch_addr) = insn;
+
+          if (page_count < -(1LL << 20) || page_count >= (1LL << 20)) {
+            // ADRP overflow: target is >±4GB away.
+            // Replace ADRP with LDR Xd, [PC, #offset] pointing to a GOT
+            // entry that holds the page address. The paired LO12 instruction
+            // (ADD/LDR/STR) still adds the low 12 bits of (S+A) correctly.
+            if (got_offset + kGotEntrySize > alloc->size) {
+              fprintf(stderr,
+                      "driverhub: %.*s: GOT space exhausted for ADRP\n",
+                      (int)name.size(), name.data());
+              break;
+            }
+            // Write the page address into the GOT entry.
+            uint8_t* got_entry = alloc_base + got_offset;
+            uint64_t page_addr = (S + A) & ~0xFFFULL;
+            memcpy(got_entry, &page_addr, 8);
+
+            // Compute PC-relative offset from ADRP to GOT entry.
+            int64_t ldr_offset = reinterpret_cast<int64_t>(got_entry) -
+                                 static_cast<int64_t>(P);
+            int64_t imm19 = ldr_offset >> 2;
+
+            if (imm19 < -(1LL << 18) || imm19 >= (1LL << 18)) {
+              fprintf(stderr,
+                      "driverhub: %.*s: GOT entry too far for LDR literal "
+                      "(%+ldMB)\n",
+                      (int)name.size(), name.data(),
+                      (long)(ldr_offset / (1024 * 1024)));
+              break;
+            }
+
+            // Encode LDR Xd, [PC, #offset] (literal load, 64-bit).
+            // Encoding: 01 011 000 imm19 Rt
+            uint32_t rd = insn & 0x1F;
+            uint32_t new_insn = 0x58000000u |
+                                ((static_cast<uint32_t>(imm19) & 0x7FFFFu) << 5) |
+                                rd;
+            *reinterpret_cast<uint32_t*>(patch_addr) = new_insn;
+
+            fprintf(stderr,
+                    "driverhub: %.*s: ADRP overflow for sym %u "
+                    "(page=%+ldMB), using GOT at +%zu\n",
+                    (int)name.size(), name.data(), sym_idx,
+                    (long)(page / (1024 * 1024)),
+                    got_offset);
+
+            got_offset += kGotEntrySize;
+          } else {
+            // Normal ADRP encoding — fits in 21-bit signed page offset.
+            uint32_t immlo = static_cast<uint32_t>((page >> 12) & 0x3);
+            uint32_t immhi = static_cast<uint32_t>((page >> 14) & 0x7FFFF);
+            insn = (insn & 0x9F00001Fu) | (immlo << 29) | (immhi << 5);
+            *reinterpret_cast<uint32_t*>(patch_addr) = insn;
+          }
           break;
         }
         case 277: {  // R_AARCH64_ADD_ABS_LO12_NC

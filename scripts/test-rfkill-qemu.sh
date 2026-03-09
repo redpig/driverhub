@@ -151,6 +151,7 @@ SOURCES=(
   src/bus_driver/bus_driver.cc
   src/module_node/module_node.cc
   src/loader/module_loader.cc
+  src/loader/module_executor.cc
   src/loader/dependency_sort.cc
   src/loader/memory_allocator.cc
   src/loader/mmap_allocator.cc
@@ -311,7 +312,7 @@ if grep -q "RFkill QEMU Demo Results" "$QEMU_LOG"; then
   echo "  Results: $PASS_COUNT PASS, $FAIL_COUNT FAIL"
   echo ""
 
-  if [ "$FAIL_COUNT" -eq 0 ] && [ "$PASS_COUNT" -ge 15 ]; then
+  if [ "$FAIL_COUNT" -eq 0 ] && [ "$PASS_COUNT" -ge 17 ]; then
     echo "=== ALL TESTS PASSED ($ARCH) ==="
     exit 0
   else

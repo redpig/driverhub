@@ -333,6 +333,7 @@ void SymbolRegistry::RegisterKmiSymbols() {
   REGISTER_SYMBOL(queue_work);
   REGISTER_SYMBOL(queue_delayed_work);
   REGISTER_SYMBOL(cancel_delayed_work_sync);
+  REGISTER_SYMBOL(cancel_delayed_work);
   REGISTER_SYMBOL(flush_workqueue);
 
   // IRQ
