@@ -49,35 +49,88 @@ typedef long long loff_t;
 typedef unsigned int fmode_t;
 #endif
 
+// Must match the Linux 6.6 GKI kernel's struct file_operations layout exactly.
+// Field offsets are ABI — precompiled .ko modules access fops at compiled-in
+// offsets.  rfkill_fops is 264 bytes = 33 8-byte fields.
 struct file_operations {
-  void *owner;  // struct module *
-  loff_t (*llseek)(struct file *, loff_t, int);
-  ssize_t (*read)(struct file *, char *, size_t, loff_t *);
-  ssize_t (*write)(struct file *, const char *, size_t, loff_t *);
-  long (*unlocked_ioctl)(struct file *, unsigned int, unsigned long);
-  long (*compat_ioctl)(struct file *, unsigned int, unsigned long);
-  int (*mmap)(struct file *, struct vm_area_struct *);
-  int (*open)(struct inode *, struct file *);
-  int (*release)(struct inode *, struct file *);
-  int (*fasync)(int, struct file *, int);
-  unsigned int (*poll)(struct file *, struct poll_table_struct *);
+  void *owner;  // struct module *                                //   0
+  loff_t (*llseek)(struct file *, loff_t, int);                   //   8
+  ssize_t (*read)(struct file *, char *, size_t, loff_t *);       //  16
+  ssize_t (*write)(struct file *, const char *, size_t, loff_t *);//  24
+  void *read_iter;                                                //  32
+  void *write_iter;                                               //  40
+  void *iopoll;                                                   //  48
+  void *iterate_shared;                                           //  56
+  unsigned int (*poll)(struct file *, struct poll_table_struct *); //  64
+  long (*unlocked_ioctl)(struct file *, unsigned int, unsigned long); // 72
+  long (*compat_ioctl)(struct file *, unsigned int, unsigned long);   // 80
+  int (*mmap)(struct file *, struct vm_area_struct *);             //  88
+  unsigned long mmap_supported_flags;                             //  96
+  int (*open)(struct inode *, struct file *);                     // 104
+  void *flush;                                                    // 112
+  int (*release)(struct inode *, struct file *);                  // 120
+  void *fsync;                                                    // 128
+  int (*fasync)(int, struct file *, int);                         // 136
+  void *lock;                                                     // 144
+  void *sendpage;                                                 // 152
+  void *get_unmapped_area;                                        // 160
+  void *check_flags;                                              // 168
+  void *flock;                                                    // 176
+  void *splice_write;                                             // 184
+  void *splice_read;                                              // 192
+  void *splice_eof;                                               // 200
+  void *setlease;                                                 // 208
+  void *fallocate;                                                // 216
+  void *show_fdinfo;                                              // 224
+  void *copy_file_range;                                          // 232
+  void *remap_file_range;                                         // 240
+  void *fadvise;                                                  // 248
+  void *uring_cmd;                                                // 256
 };
 
-// Minimal struct file.
+// struct file — must match the GKI 6.6 kernel layout at offsets that
+// module code accesses.  Shim-only fields are placed in the initial
+// padding region (kernel uses union/spinlock/fmode_t there, but modules
+// don't access those directly).
+//
+// Key kernel offsets (from rfkill.ko disassembly):
+//   f_flags:      0x58  (module reads byte 0x59 bit 3 for O_NONBLOCK)
+//   private_data: 0xd8  (module reads/writes per-file data pointer)
+//
+// Shim-internal fields (f_op, f_mode, f_pos) are at the start where
+// the kernel has f_llist/f_lock/f_mode/f_count — modules never access
+// these directly.
 struct file {
-  const struct file_operations *f_op;
-  void *private_data;
-  fmode_t f_mode;
-  loff_t f_pos;
-  unsigned int f_flags;
-};
+  // --- Shim-only region (0x00 – 0x17) ---
+  const struct file_operations *f_op;    // 0x00 (shim dispatch)
+  fmode_t f_mode;                        // 0x08 (shim-internal)
+  unsigned int _pad0;                    // 0x0c
+  loff_t f_pos;                          // 0x10 (shim-internal)
 
-// Minimal struct inode.
+  // --- Padding to kernel f_flags offset ---
+  char _pad1[0x58 - 0x18];              // 0x18 – 0x57
+
+  // --- Module-accessed fields at kernel offsets ---
+  unsigned int f_flags;                  // 0x58 (matches kernel)
+  char _pad2[0xd8 - 0x5c];              // 0x5c – 0xd7
+  void *private_data;                    // 0xd8 (matches kernel)
+
+  // --- Tail padding (kernel struct file is ~256 bytes) ---
+  char _pad3[0x100 - 0xe0];             // 0xe0 – 0xff
+};  // Total: 256 bytes
+
+// struct inode — similarly, must be large enough for module code that
+// may access fields at kernel offsets.  rfkill.ko only passes inode to
+// stream_open (our shim) and doesn't dereference fields directly.
+// Other modules may access i_rdev, i_private, etc. — so we place them
+// at safe offsets and pad the struct to a safe size.
 struct inode {
-  unsigned long i_ino;
-  void *i_private;
-  unsigned short i_mode;
-  dev_t i_rdev;
+  unsigned long i_ino;                   // 0x00
+  void *i_private;                       // 0x08
+  unsigned short i_mode;                 // 0x10
+  unsigned short _pad0;                  // 0x12
+  dev_t i_rdev;                          // 0x14
+  char _pad1[256 - 0x14 - sizeof(dev_t)]; // Pad to 256 bytes
 };
 
 // File mode bits.

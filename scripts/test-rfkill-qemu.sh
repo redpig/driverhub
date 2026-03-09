@@ -312,7 +312,7 @@ if grep -q "RFkill QEMU Demo Results" "$QEMU_LOG"; then
   echo "  Results: $PASS_COUNT PASS, $FAIL_COUNT FAIL"
   echo ""
 
-  if [ "$FAIL_COUNT" -eq 0 ] && [ "$PASS_COUNT" -ge 17 ]; then
+  if [ "$FAIL_COUNT" -eq 0 ] && [ "$PASS_COUNT" -ge 26 ]; then
     echo "=== ALL TESTS PASSED ($ARCH) ==="
     exit 0
   else
