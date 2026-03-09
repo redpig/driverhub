@@ -16,11 +16,22 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "src/shim/include/linux/android_kabi.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 // Minimal struct device matching the Linux kernel fields used by GKI modules.
+//
+// GKI 6.6 struct device on ARM64 is ~728 bytes with 8 ANDROID_KABI_RESERVE
+// slots. We keep a simplified layout with key fields that modules access
+// (init_name, parent, driver_data, platform_data) and pad to the correct
+// total size.
+//
+// TODO: Validate field offsets against GKI 6.6 vmlinux. The offsets here
+// match the simplified shim; the abi/structs.h version has the full
+// offset-accurate layout for modules that access device fields directly.
 struct device {
   const char* init_name;
   struct device* parent;
@@ -28,6 +39,18 @@ struct device {
   void* platform_data;
   // Devres (device-managed resource) list head. Simplified to a linked list.
   void* devres_head;
+  // Padding to approximate GKI 6.6 struct device size.
+  // Full ABI-compatible layout is in src/shim/include/linux/abi/structs.h.
+  char _kabi_pad[728 - 5 * sizeof(void*) - 8 * sizeof(uint64_t)];
+  // GKI ANDROID_KABI_RESERVE slots.
+  ANDROID_KABI_RESERVE(1);
+  ANDROID_KABI_RESERVE(2);
+  ANDROID_KABI_RESERVE(3);
+  ANDROID_KABI_RESERVE(4);
+  ANDROID_KABI_RESERVE(5);
+  ANDROID_KABI_RESERVE(6);
+  ANDROID_KABI_RESERVE(7);
+  ANDROID_KABI_RESERVE(8);
 };
 
 // Resource types.

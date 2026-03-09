@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-/* DriverHub ABI-compatible struct definitions for Linux 5.15 x86_64.
+/* DriverHub ABI-compatible struct definitions.
  *
  * These structs are sized and laid out to match the real kernel's ABI
  * so that pre-built .ko modules compiled against the real kernel headers
@@ -8,13 +8,17 @@
  * Only fields that shimmed code actually reads/writes are named.
  * Everything else is opaque padding.
  *
- * Generated from kernel 5.15 x86_64 defconfig:
- *   struct device:           728 bytes
- *   struct platform_device:  808 bytes
- *   struct platform_driver:  200 bytes
- *   struct rtc_device:      1264 bytes
+ * Struct sizes include ANDROID_KABI_RESERVE slots used by GKI for
+ * ABI-compatible extension. See:
+ *   https://source.android.com/docs/core/architecture/kernel/abi-monitor
+ *
+ * Target: GKI android15-6.6 ARM64
+ *   struct device:           728 bytes (8 KABI reserves)
+ *   struct platform_device:  808 bytes (4 KABI reserves)
+ *   struct platform_driver:  200 bytes (4 KABI reserves)
+ *   struct rtc_device:      1264 bytes (4 KABI reserves)
  *   struct timer_list:        40 bytes
- *   struct rtc_class_ops:     72 bytes
+ *   struct rtc_class_ops:     72 bytes (2 KABI reserves)
  */
 
 #ifndef _DRIVERHUB_ABI_STRUCTS_H
@@ -22,6 +26,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include "src/shim/include/linux/android_kabi.h"
 
 /* Use static_assert in C++ mode, ABI_STATIC_ASSERT in C mode. */
 #ifdef __cplusplus
@@ -36,6 +41,9 @@
  *   parent        @ 64
  *   platform_data @ 112
  *   driver_data   @ 120
+ *
+ * GKI 6.6 adds 8 ANDROID_KABI_RESERVE slots within the tail padding.
+ * The reserves are at the end of the struct before final padding.
  */
 struct device {
 	char _pad0[64];              /* 0..63   */
@@ -45,7 +53,15 @@ struct device {
 	char _pad2[24];              /* 88..111 */
 	void *platform_data;         /* 112..119 */
 	void *driver_data;           /* 120..127 */
-	char _pad3[600];             /* 128..727 */
+	char _pad3[536];             /* 128..663 (reduced for KABI reserves) */
+	ANDROID_KABI_RESERVE(1);     /* 664..671 */
+	ANDROID_KABI_RESERVE(2);     /* 672..679 */
+	ANDROID_KABI_RESERVE(3);     /* 680..687 */
+	ANDROID_KABI_RESERVE(4);     /* 688..695 */
+	ANDROID_KABI_RESERVE(5);     /* 696..703 */
+	ANDROID_KABI_RESERVE(6);     /* 704..711 */
+	ANDROID_KABI_RESERVE(7);     /* 712..719 */
+	ANDROID_KABI_RESERVE(8);     /* 720..727 */
 };
 
 ABI_STATIC_ASSERT(sizeof(struct device) == 728, "device size mismatch");
@@ -79,7 +95,10 @@ struct platform_device {
 	unsigned int num_resources;  /* 768..771 */
 	char _pad2[4];               /* 772..775 */
 	struct resource *resource;   /* 776..783 */
-	char _pad3[24];              /* 784..807 */
+	/* GKI KABI reserves within tail padding */
+	ANDROID_KABI_RESERVE(1);     /* 784..791 */
+	ANDROID_KABI_RESERVE(2);     /* 792..799 */
+	ANDROID_KABI_RESERVE(3);     /* 800..807 */
 };
 
 ABI_STATIC_ASSERT(sizeof(struct platform_device) == 808, "platform_device size mismatch");
@@ -104,7 +123,12 @@ struct platform_driver {
 	/* Embedded struct device_driver starts at 40. */
 	/* device_driver.name is at offset 0 within it. */
 	const char *driver_name;                       /* 40..47 */
-	char _pad1[152];                               /* 48..199 */
+	char _pad1[120];                               /* 48..167 */
+	/* GKI KABI reserves in device_driver portion */
+	ANDROID_KABI_RESERVE(1);                       /* 168..175 */
+	ANDROID_KABI_RESERVE(2);                       /* 176..183 */
+	ANDROID_KABI_RESERVE(3);                       /* 184..191 */
+	ANDROID_KABI_RESERVE(4);                       /* 192..199 */
 };
 
 ABI_STATIC_ASSERT(sizeof(struct platform_driver) == 200, "platform_driver size mismatch");
@@ -172,7 +196,8 @@ struct rtc_class_ops {
 	int (*set_alarm)(struct device *, struct rtc_wkalrm *);       /* 32..39 */
 	void *_pad1;                 /* 40..47 (proc) */
 	int (*alarm_irq_enable)(struct device *, unsigned int);       /* 48..55 */
-	char _pad2[16];              /* 56..71 */
+	ANDROID_KABI_RESERVE(1);     /* 56..63 */
+	ANDROID_KABI_RESERVE(2);     /* 64..71 */
 };
 
 ABI_STATIC_ASSERT(sizeof(struct rtc_class_ops) == 72, "rtc_class_ops size mismatch");
@@ -194,7 +219,11 @@ struct rtc_device {
 	int id;                      /* 736..739 */
 	char _pad1[4];               /* 740..743 */
 	const struct rtc_class_ops *ops;  /* 744..751 */
-	char _pad2[512];             /* 752..1263 */
+	char _pad2[480];             /* 752..1231 */
+	ANDROID_KABI_RESERVE(1);     /* 1232..1239 */
+	ANDROID_KABI_RESERVE(2);     /* 1240..1247 */
+	ANDROID_KABI_RESERVE(3);     /* 1248..1255 */
+	ANDROID_KABI_RESERVE(4);     /* 1256..1263 */
 };
 
 ABI_STATIC_ASSERT(sizeof(struct rtc_device) == 1264, "rtc_device size mismatch");

@@ -20,6 +20,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "src/shim/include/linux/android_kabi.h"
 #include "src/shim/kernel/device.h"
 
 #ifdef __cplusplus
@@ -51,7 +52,10 @@ typedef unsigned int fmode_t;
 
 // Must match the Linux 6.6 GKI kernel's struct file_operations layout exactly.
 // Field offsets are ABI — precompiled .ko modules access fops at compiled-in
-// offsets.  rfkill_fops is 264 bytes = 33 8-byte fields.
+// offsets.
+//
+// GKI 6.6 adds 4 ANDROID_KABI_RESERVE slots at the end.
+// Total: 33 function pointers (264 bytes) + 4 KABI reserves (32 bytes) = 296 bytes.
 struct file_operations {
   void *owner;  // struct module *                                //   0
   loff_t (*llseek)(struct file *, loff_t, int);                   //   8
@@ -86,7 +90,12 @@ struct file_operations {
   void *remap_file_range;                                         // 240
   void *fadvise;                                                  // 248
   void *uring_cmd;                                                // 256
-};
+  // GKI ANDROID_KABI_RESERVE slots.
+  ANDROID_KABI_RESERVE(1);                                        // 264
+  ANDROID_KABI_RESERVE(2);                                        // 272
+  ANDROID_KABI_RESERVE(3);                                        // 280
+  ANDROID_KABI_RESERVE(4);                                        // 288
+};  // Total: 296 bytes
 
 // struct file — must match the GKI 6.6 kernel layout at offsets that
 // module code accesses.  Shim-only fields are placed in the initial
@@ -100,6 +109,9 @@ struct file_operations {
 // Shim-internal fields (f_op, f_mode, f_pos) are at the start where
 // the kernel has f_llist/f_lock/f_mode/f_count — modules never access
 // these directly.
+//
+// GKI 6.6 adds 4 ANDROID_KABI_RESERVE slots at the end of struct file,
+// extending the total size to ~288 bytes.
 struct file {
   // --- Shim-only region (0x00 – 0x17) ---
   const struct file_operations *f_op;    // 0x00 (shim dispatch)
@@ -115,23 +127,36 @@ struct file {
   char _pad2[0xd8 - 0x5c];              // 0x5c – 0xd7
   void *private_data;                    // 0xd8 (matches kernel)
 
-  // --- Tail padding (kernel struct file is ~256 bytes) ---
-  char _pad3[0x100 - 0xe0];             // 0xe0 – 0xff
-};  // Total: 256 bytes
+  // --- Tail padding + GKI KABI reserves ---
+  char _pad3[0xe0 - 0xd8 - sizeof(void*)]; // 0xe0 pad
+  ANDROID_KABI_RESERVE(1);               // 0xe0
+  ANDROID_KABI_RESERVE(2);               // 0xe8
+  ANDROID_KABI_RESERVE(3);               // 0xf0
+  ANDROID_KABI_RESERVE(4);               // 0xf8
+  char _pad4[0x120 - 0x100];            // tail padding to 288 bytes
+};  // Total: 288 bytes
 
-// struct inode — similarly, must be large enough for module code that
-// may access fields at kernel offsets.  rfkill.ko only passes inode to
-// stream_open (our shim) and doesn't dereference fields directly.
-// Other modules may access i_rdev, i_private, etc. — so we place them
-// at safe offsets and pad the struct to a safe size.
+// struct inode — must be large enough for module code that may access
+// fields at kernel offsets.  rfkill.ko only passes inode to stream_open
+// (our shim) and doesn't dereference fields directly.  Other modules
+// may access i_rdev, i_private, etc.
+//
+// GKI 6.6 struct inode on ARM64 is ~720 bytes with 4 KABI reserves.
+// We use a padded struct with key fields at their correct offsets.
+// TODO: Validate exact offsets against GKI 6.6 vmlinux when available.
 struct inode {
   unsigned long i_ino;                   // 0x00
   void *i_private;                       // 0x08
   unsigned short i_mode;                 // 0x10
   unsigned short _pad0;                  // 0x12
   dev_t i_rdev;                          // 0x14
-  char _pad1[256 - 0x14 - sizeof(dev_t)]; // Pad to 256 bytes
-};
+  char _pad1[0x2c0 - 0x14 - sizeof(dev_t) - 4 * sizeof(uint64_t)];
+  // GKI KABI reserves at the end.
+  ANDROID_KABI_RESERVE(1);
+  ANDROID_KABI_RESERVE(2);
+  ANDROID_KABI_RESERVE(3);
+  ANDROID_KABI_RESERVE(4);
+};  // Total: ~704 bytes (padded to accommodate GKI 6.6 layout)
 
 // File mode bits.
 #define S_IRUSR 0400
@@ -312,6 +337,9 @@ struct kobject {
   void *sd;  // struct kernfs_node *
   int state_initialized;
   int state_in_sysfs;
+  char _kabi_pad[64 - 4 * sizeof(void*) - 2 * sizeof(int) - 2 * sizeof(uint64_t)];
+  ANDROID_KABI_RESERVE(1);
+  ANDROID_KABI_RESERVE(2);
 };
 
 struct attribute {
