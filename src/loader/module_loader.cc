@@ -537,6 +537,42 @@ std::unique_ptr<LoadedModule> ModuleLoader::Load(std::string_view name,
     }
   }
 
+  // Patch out kCFI (Kernel Control Flow Integrity) checks.
+  //
+  // GKI modules are compiled with -fsanitize=kcfi.  Every indirect call
+  // site verifies a type hash placed before the target function:
+  //
+  //   ldur w16, [x8, #-4]     ; read CFI tag before target
+  //   cmp  w16, w17            ; compare with expected tag
+  //   b.eq ok                  ; match → call
+  //   brk  #0x82XX             ; mismatch → trap
+  //
+  // Our shim callbacks are not compiled with kCFI tags, so these checks
+  // always trap.  Replace kCFI BRK instructions (brk #0x8200..#0x82FF,
+  // encoding 0xd4304000..0xd4305fe0) with NOP in executable sections.
+  {
+    constexpr uint32_t kNop = 0xd503201f;
+    constexpr uint32_t kBrkKcfiLo = 0xd4304000;  // brk #0x8200
+    constexpr uint32_t kBrkKcfiHi = 0xd4305fe0;  // brk #0x82FF
+    size_t patched = 0;
+    for (uint16_t i = 0; i < shnum; i++) {
+      if (!(shdrs[i].sh_flags & SHF_EXECINSTR)) continue;
+      if (!sections[i].base) continue;
+      auto* code = reinterpret_cast<uint32_t*>(sections[i].base);
+      size_t count = shdrs[i].sh_size / 4;
+      for (size_t j = 0; j < count; j++) {
+        if (code[j] >= kBrkKcfiLo && code[j] <= kBrkKcfiHi) {
+          code[j] = kNop;
+          patched++;
+        }
+      }
+    }
+    if (patched > 0) {
+      fprintf(stderr, "driverhub: %.*s: patched %zu kCFI checks\n",
+              (int)name.size(), name.data(), patched);
+    }
+  }
+
   // Run constructors from .init_array / .ctors sections.
   // EXPORT_SYMBOL uses __attribute__((constructor)) which places function
   // pointers in .init_array.  These must run before init_module so that
@@ -567,7 +603,7 @@ std::unique_ptr<LoadedModule> ModuleLoader::Load(std::string_view name,
   }
   module->info.name = std::string(name);
 
-  // Find init_module and cleanup_module entry points.
+  // Find init_module, cleanup_module, and all GLOBAL exports.
   for (size_t i = 0; i < symcount; i++) {
     const char* sym_name = strtab + symtab[i].st_name;
     if (strcmp(sym_name, "init_module") == 0) {
@@ -575,6 +611,22 @@ std::unique_ptr<LoadedModule> ModuleLoader::Load(std::string_view name,
     } else if (strcmp(sym_name, "cleanup_module") == 0) {
       module->exit_fn = reinterpret_cast<void (*)()>(sym_addrs[i]);
     }
+
+    // Retain all resolved GLOBAL FUNC/OBJECT symbols so callers and
+    // other modules can invoke the module's exported API (e.g.,
+    // rfkill_alloc, rfkill_register).
+    if (sym_addrs[i] &&
+        ELF64_ST_BIND(symtab[i].st_info) == STB_GLOBAL &&
+        symtab[i].st_shndx != SHN_UNDEF &&
+        sym_name[0] != '\0') {
+      module->exports[sym_name] = sym_addrs[i];
+    }
+  }
+
+  // Register module exports in the symbol registry for intermodule
+  // resolution (subsequent modules can call into this one).
+  for (const auto& [sym_name, addr] : module->exports) {
+    symbols_.Register(sym_name, addr);
   }
 
   // Transfer ownership of the allocation to the module.

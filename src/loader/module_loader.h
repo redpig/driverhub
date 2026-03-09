@@ -9,6 +9,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "src/loader/memory_allocator.h"
@@ -35,6 +36,17 @@ struct LoadedModule {
   // Entry points resolved from the module's symbol table.
   int (*init_fn)() = nullptr;
   void (*exit_fn)() = nullptr;
+
+  // Global symbols exported by this module (GLOBAL FUNC/OBJECT).
+  // Populated during Load() so callers (and other modules) can call
+  // into this module's exported API.
+  std::unordered_map<std::string, void*> exports;
+
+  // Look up an exported symbol by name. Returns nullptr if not found.
+  void* Resolve(const char* name) const {
+    auto it = exports.find(name);
+    return it != exports.end() ? it->second : nullptr;
+  }
 
   // Owned memory allocation backing the loaded module sections.
   // Automatically released when the LoadedModule is destroyed.

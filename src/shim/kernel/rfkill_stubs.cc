@@ -13,8 +13,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <sys/types.h>
 
 #include "src/shim/kernel/device.h"
+#include "src/shim/subsystem/fs.h"
 
 extern "C" {
 
@@ -246,5 +248,75 @@ void __mutex_init(void* mutex_ptr, const char* name, void* key) {
     *opaque = nullptr;  // Will be lazily initialized on first lock.
   }
 }
+
+// --- Common kernel functions that GKI modules may reference ---
+
+// no_llseek: prevents seeking on stream-type files.
+loff_t no_llseek(void* file, loff_t offset, int whence) {
+  (void)file;
+  (void)offset;
+  (void)whence;
+  return -29;  // -ESPIPE (Illegal seek)
+}
+
+// noop_llseek: allows llseek but doesn't do anything.
+loff_t noop_llseek(void* file, loff_t offset, int whence) {
+  (void)file;
+  (void)whence;
+  return offset;
+}
+
+// _cond_resched: voluntary preemption point.
+int _cond_resched(void) { return 0; }
+
+// __might_sleep: debug check for sleeping in atomic context.
+void __might_sleep(const char* file, int line) {
+  (void)file;
+  (void)line;
+}
+
+// __might_fault: debug check for page-fault-possible context.
+void __might_fault(const char* file, int line) {
+  (void)file;
+  (void)line;
+}
+
+// _printk: GKI 6.x sometimes uses _printk instead of printk.
+int _printk(const char* fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  int ret = vfprintf(stderr, fmt, ap);
+  va_end(ap);
+  return ret;
+}
+
+// input_register_handler / input_unregister_handler: rfkill may use these
+// when CONFIG_RFKILL_INPUT is enabled.
+int input_register_handler(void* handler) {
+  (void)handler;
+  fprintf(stderr, "driverhub: input_register_handler (stub)\n");
+  return 0;
+}
+
+void input_unregister_handler(void* handler) {
+  (void)handler;
+  fprintf(stderr, "driverhub: input_unregister_handler (stub)\n");
+}
+
+// __warn_printk: kernel warning print function.
+void __warn_printk(const char* fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  fprintf(stderr, "[driverhub][WARN] ");
+  vfprintf(stderr, fmt, ap);
+  va_end(ap);
+}
+
+// _raw_spin_lock / _raw_spin_unlock: raw spinlock variants.
+void _raw_spin_lock(void* lock) { (void)lock; }
+void _raw_spin_unlock(void* lock) { (void)lock; }
+
+// __sanitizer_cov_trace_pc: KCOV tracing stub.
+void __sanitizer_cov_trace_pc(void) {}
 
 }  // extern "C"

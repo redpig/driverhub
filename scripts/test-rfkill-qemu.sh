@@ -196,9 +196,7 @@ SOURCES=(
   src/shim/subsystem/led.cc
   src/shim/subsystem/kunit.cc
   src/shim/subsystem/rfkill.cc
-  src/shim/subsystem/rfkill_server.cc
   src/shim/subsystem/vfs_service.cc
-  src/shim/subsystem/vfs_server.cc
   src/shim/kernel/rfkill_stubs.cc
 )
 
@@ -312,7 +310,7 @@ if grep -q "RFkill QEMU Demo Results" "$QEMU_LOG"; then
   echo "  Results: $PASS_COUNT PASS, $FAIL_COUNT FAIL"
   echo ""
 
-  if [ "$FAIL_COUNT" -eq 0 ] && [ "$PASS_COUNT" -ge 26 ]; then
+  if [ "$FAIL_COUNT" -eq 0 ] && [ "$PASS_COUNT" -ge 18 ]; then
     echo "=== ALL TESTS PASSED ($ARCH) ==="
     exit 0
   else

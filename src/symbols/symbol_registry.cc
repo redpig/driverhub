@@ -120,6 +120,21 @@ struct led_trigger;
 int led_trigger_register(struct led_trigger* trigger);
 void led_trigger_unregister(struct led_trigger* trigger);
 
+// Common kernel stubs for GKI modules
+// loff_t already defined via fs.h
+loff_t no_llseek(void* file, loff_t offset, int whence);
+loff_t noop_llseek(void* file, loff_t offset, int whence);
+int _cond_resched(void);
+void __might_sleep(const char* file, int line);
+void __might_fault(const char* file, int line);
+int _printk(const char* fmt, ...);
+int input_register_handler(void* handler);
+void input_unregister_handler(void* handler);
+void __warn_printk(const char* fmt, ...);
+void _raw_spin_lock(void* lock);
+void _raw_spin_unlock(void* lock);
+void __sanitizer_cov_trace_pc(void);
+
 // clk_hw (clock provider) stubs
 struct clk_hw;
 struct clk_hw* __clk_hw_register_gate(struct device* dev, const char* name,
@@ -931,6 +946,20 @@ void SymbolRegistry::RegisterKmiSymbols() {
   REGISTER_SYMBOL(__wake_up);
   REGISTER_SYMBOL(__init_waitqueue_head);
   REGISTER_SYMBOL(__mutex_init);
+
+  // Common kernel stubs
+  REGISTER_SYMBOL(no_llseek);
+  REGISTER_SYMBOL(noop_llseek);
+  REGISTER_SYMBOL(_cond_resched);
+  REGISTER_SYMBOL(__might_sleep);
+  REGISTER_SYMBOL(__might_fault);
+  REGISTER_SYMBOL(_printk);
+  REGISTER_SYMBOL(input_register_handler);
+  REGISTER_SYMBOL(input_unregister_handler);
+  REGISTER_SYMBOL(__warn_printk);
+  REGISTER_SYMBOL(_raw_spin_lock);
+  REGISTER_SYMBOL(_raw_spin_unlock);
+  REGISTER_SYMBOL(__sanitizer_cov_trace_pc);
 
   fprintf(stderr, "driverhub: registered %zu KMI symbols\n", symbols_.size());
 }
