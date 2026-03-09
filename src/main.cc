@@ -4,13 +4,19 @@
 
 // CLI harness for testing DriverHub module loading on the host.
 //
-// Usage: driverhub <module1.ko> [module2.ko] ...
+// Usage: driverhub [--manifest <file>] [module1.ko] [module2.ko] ...
 //
 // Initializes the KMI shim layer, loads each .ko module in order, calls
 // module_init(), and then calls module_exit() on shutdown.
+//
+// --manifest <file>  Read module paths from a file (one per line).
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <dirent.h>
+#include <vector>
+#include <string>
 
 #include "src/bus_driver/bus_driver.h"
 
@@ -18,9 +24,18 @@
 #include "src/fuchsia/resource_provider.h"
 #endif
 
+static int load_module(driverhub::BusDriver& bus, const char* path) {
+  fprintf(stderr, "\n--- Loading %s ---\n", path);
+  int status = bus.LoadModuleFromFile(path);
+  if (status != 0) {
+    fprintf(stderr, "error: failed to load %s (status=%d)\n", path, status);
+  }
+  return status;
+}
+
 int main(int argc, char** argv) {
   if (argc < 2) {
-    fprintf(stderr, "usage: %s <module.ko> [module2.ko ...]\n", argv[0]);
+    fprintf(stderr, "usage: %s [--manifest <file>] <module.ko> ...\n", argv[0]);
     return 1;
   }
 
@@ -37,15 +52,33 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  // Load each module specified on the command line.
+  // Collect module paths from args and manifest files.
+  std::vector<std::string> modules;
   for (int i = 1; i < argc; i++) {
-    fprintf(stderr, "\n--- Loading %s ---\n", argv[i]);
-    status = bus.LoadModuleFromFile(argv[i]);
-    if (status != 0) {
-      fprintf(stderr, "error: failed to load %s (status=%d)\n",
-              argv[i], status);
-      // Continue loading other modules.
+    if (strcmp(argv[i], "--manifest") == 0 && i + 1 < argc) {
+      i++;
+      FILE* f = fopen(argv[i], "r");
+      if (!f) {
+        fprintf(stderr, "error: cannot open manifest %s\n", argv[i]);
+        continue;
+      }
+      char line[512];
+      while (fgets(line, sizeof(line), f)) {
+        // Strip trailing newline.
+        size_t len = strlen(line);
+        while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r'))
+          line[--len] = '\0';
+        if (len > 0) modules.emplace_back(line);
+      }
+      fclose(f);
+    } else {
+      modules.emplace_back(argv[i]);
     }
+  }
+
+  fprintf(stderr, "\n--- Loading %zu module(s) ---\n", modules.size());
+  for (const auto& path : modules) {
+    load_module(bus, path.c_str());
   }
 
   fprintf(stderr, "\n--- %zu module(s) loaded ---\n", bus.module_count());
