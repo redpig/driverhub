@@ -27,5 +27,9 @@ third_party/fuchsia-idk/
 third_party/elfldltl/
 third_party/clang/
 
+# GKI kernel headers (downloadable from CI, see third_party/gki-headers/README.md)
+third_party/gki-headers/include/
+third_party/gki-headers/arch/
+
 # OS files
 .DS_Store
