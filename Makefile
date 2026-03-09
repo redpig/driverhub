@@ -51,7 +51,10 @@ LIB_SRCS := \
 	src/shim/subsystem/pwm.cc \
 	src/shim/subsystem/led.cc \
 	src/shim/subsystem/kunit.cc \
-	src/shim/kernel/rfkill_stubs.cc
+	src/shim/kernel/rfkill_stubs.cc \
+	src/shim/kernel/gki_stubs.cc \
+	src/shim/kernel/libc_stubs.cc \
+	src/shim/subsystem/vfs_service.cc
 
 SRCS := src/main.cc $(LIB_SRCS)
 OBJS := $(SRCS:.cc=.o)
@@ -109,7 +112,10 @@ GKI_SRCS := \
 	src/shim/subsystem/pwm.cc \
 	src/shim/subsystem/led.cc \
 	src/shim/subsystem/kunit.cc \
-	src/shim/kernel/rfkill_stubs.cc
+	src/shim/kernel/rfkill_stubs.cc \
+	src/shim/kernel/gki_stubs.cc \
+	src/shim/kernel/libc_stubs.cc \
+	src/shim/subsystem/vfs_service.cc
 
 GKI_OBJS := $(GKI_SRCS:.cc=.gki.o)
 GKI_TARGET := driverhub-gki
