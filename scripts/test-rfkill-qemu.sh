@@ -8,7 +8,7 @@
 #   - ELF loading + ARM64 relocations for rfkill.ko
 #   - KMI symbol resolution (all 545+ symbols)
 #   - rfkill.ko init_module (class_register, misc device, LED triggers)
-#   - shim_rfkill_alloc / register for test radios
+#   - module's own rfkill_alloc / rfkill_register for test radios
 #   - rfkill IPC server (LIST, BLOCK, UNBLOCK, BLOCKALL, UNBLOCKALL)
 #   - Error handling for invalid indices
 #
@@ -195,7 +195,6 @@ SOURCES=(
   src/shim/subsystem/pwm.cc
   src/shim/subsystem/led.cc
   src/shim/subsystem/kunit.cc
-  src/shim/subsystem/rfkill.cc
   src/shim/subsystem/vfs_service.cc
   src/shim/kernel/rfkill_stubs.cc
 )

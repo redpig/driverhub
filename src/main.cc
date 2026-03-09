@@ -13,8 +13,6 @@
 #include <cstdlib>
 
 #include "src/bus_driver/bus_driver.h"
-#include "src/shim/subsystem/rfkill_server.h"
-#include "src/shim/subsystem/vfs_service.h"
 
 #if defined(__Fuchsia__)
 #include "src/fuchsia/resource_provider.h"
@@ -52,17 +50,9 @@ int main(int argc, char** argv) {
 
   fprintf(stderr, "\n--- %zu module(s) loaded ---\n", bus.module_count());
 
-  // Start the VFS IPC server (serves /dev, /sys, /proc for all modules).
-  driverhub::StartVfsServer();
-
-  // Also start the rfkill-specific server for backwards compatibility.
-  driverhub::StartRfkillServer();
-
   fprintf(stderr, "Press Enter to unload and exit...\n");
   getchar();
 
-  driverhub::StopRfkillServer();
-  driverhub::StopVfsServer();
   bus.Shutdown();
   return 0;
 }

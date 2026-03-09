@@ -123,14 +123,11 @@ int main(int argc, char** argv) {
   test_device.init_name = "test_device";
   device_create_file(&test_device, &test_dev_attr);
 
-  // Start the VFS server.
-  driverhub::StartVfsServer(sock_path);
-  fprintf(stderr, "VFS server running on %s\n", sock_path);
+  // VFS is available via DevFs API.
   fprintf(stderr, "READY\n");
   fflush(stderr);
   getchar();
 
-  driverhub::StopVfsServer();
   misc_deregister(&test_misc);
   return 0;
 }
@@ -143,7 +140,6 @@ $CXX $CXXFLAGS -o "$SERVER_BIN" \
   /tmp/vfs_test_main.cc \
   src/shim/subsystem/fs.cc \
   src/shim/subsystem/vfs_service.cc \
-  src/shim/subsystem/vfs_server.cc \
   -lpthread 2>&1
 echo "  Built: $SERVER_BIN"
 

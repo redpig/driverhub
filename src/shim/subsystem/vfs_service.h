@@ -255,16 +255,6 @@ class ProcFs {
   VfsTree tree_;
 };
 
-// ============================================================
-// VFS IPC Server — serves all three trees over Unix socket
-// ============================================================
-
-// Start the unified VFS IPC server on a background thread.
-void StartVfsServer(const std::string& socket_path = "");
-
-// Stop the VFS IPC server.
-void StopVfsServer();
-
 }  // namespace driverhub
 
 #endif  // DRIVERHUB_SRC_SHIM_SUBSYSTEM_VFS_SERVICE_H_

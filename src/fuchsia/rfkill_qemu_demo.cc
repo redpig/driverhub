@@ -34,7 +34,6 @@
 #include "src/loader/module_executor.h"
 #include "src/loader/module_loader.h"
 #include "src/shim/subsystem/fs.h"
-#include "src/shim/subsystem/rfkill.h"
 #include "src/shim/subsystem/vfs_service.h"
 #include "src/symbols/symbol_registry.h"
 
