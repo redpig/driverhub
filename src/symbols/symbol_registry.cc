@@ -37,6 +37,7 @@
 #include "src/shim/subsystem/nvmem.h"
 #include "src/shim/subsystem/power_supply.h"
 #include "src/shim/subsystem/pwm.h"
+#include "src/shim/kernel/libc_stubs.h"
 #include "src/shim/subsystem/led.h"
 
 // Forward declarations for RTC, timer, ABI-compat, and kunit shim symbols.
@@ -960,6 +961,91 @@ void SymbolRegistry::RegisterKmiSymbols() {
   REGISTER_SYMBOL(_raw_spin_lock);
   REGISTER_SYMBOL(_raw_spin_unlock);
   REGISTER_SYMBOL(__sanitizer_cov_trace_pc);
+
+  // ---- C library / fundamental kernel symbols ----
+  // These are the most commonly needed symbols across GKI modules.
+  // Analysis: 192 modules from GKI android15-6.6 system_dlkm.
+  REGISTER_SYMBOL(memset);
+  REGISTER_SYMBOL(memcpy);
+  REGISTER_SYMBOL(memmove);
+  REGISTER_SYMBOL(memcmp);
+  REGISTER_SYMBOL(strlen);
+  REGISTER_SYMBOL(strnlen);
+  REGISTER_SYMBOL(strcmp);
+  REGISTER_SYMBOL(strncmp);
+  REGISTER_SYMBOL(strcpy);
+  REGISTER_SYMBOL(strncpy);
+  REGISTER_SYMBOL(strcat);
+  REGISTER_SYMBOL(strncat);
+  REGISTER_SYMBOL(strchr);
+  REGISTER_SYMBOL(strrchr);
+  REGISTER_SYMBOL(strstr);
+  REGISTER_SYMBOL(snprintf);
+  REGISTER_SYMBOL(sprintf);
+  REGISTER_SYMBOL(sscanf);
+  REGISTER_SYMBOL(vsnprintf);
+  REGISTER_SYMBOL(vsprintf);
+  REGISTER_SYMBOL(vsscanf);
+  REGISTER_SYMBOL(strscpy);
+  REGISTER_SYMBOL(kmemdup);
+
+  // String conversion.
+  REGISTER_SYMBOL(simple_strtol);
+  REGISTER_SYMBOL(simple_strtoul);
+  REGISTER_SYMBOL(simple_strtoll);
+  REGISTER_SYMBOL(simple_strtoull);
+  REGISTER_SYMBOL(kstrtoint);
+  REGISTER_SYMBOL(kstrtouint);
+  REGISTER_SYMBOL(kstrtol);
+  REGISTER_SYMBOL(kstrtoul);
+  REGISTER_SYMBOL(kstrtobool);
+
+  // Refcount (needed by 29+ modules).
+  REGISTER_SYMBOL(refcount_warn_saturate);
+
+  // RCU (needed by 18+ modules).
+  REGISTER_SYMBOL(__rcu_read_lock);
+  REGISTER_SYMBOL(__rcu_read_unlock);
+  REGISTER_SYMBOL(synchronize_rcu);
+  REGISTER_SYMBOL(call_rcu);
+  REGISTER_SYMBOL(rcu_barrier);
+
+  // Preemption.
+  REGISTER_SYMBOL(preempt_schedule_notrace);
+  REGISTER_SYMBOL(preempt_schedule);
+
+  // BH/read/write spinlock variants (needed by 15+ modules).
+  REGISTER_SYMBOL(_raw_spin_lock_bh);
+  REGISTER_SYMBOL(_raw_spin_unlock_bh);
+  REGISTER_SYMBOL(_raw_read_lock);
+  REGISTER_SYMBOL(_raw_read_unlock);
+  REGISTER_SYMBOL(_raw_write_lock_bh);
+  REGISTER_SYMBOL(_raw_write_unlock_bh);
+  REGISTER_SYMBOL(_raw_read_lock_bh);
+  REGISTER_SYMBOL(_raw_read_unlock_bh);
+
+  // Module lifecycle.
+  REGISTER_SYMBOL(try_module_get);
+  REGISTER_SYMBOL(module_put);
+
+  // Per-CPU / random.
+  Register("cpu_number", reinterpret_cast<void*>(
+      reinterpret_cast<uintptr_t>(&cpu_number)));
+  REGISTER_SYMBOL(get_random_bytes);
+
+  // dev_* logging.
+  REGISTER_SYMBOL(_dev_err);
+  REGISTER_SYMBOL(_dev_warn);
+  REGISTER_SYMBOL(_dev_info);
+
+  // Wait queue helpers.
+  REGISTER_SYMBOL(add_wait_queue);
+  REGISTER_SYMBOL(remove_wait_queue);
+
+  // Sort/search.
+  REGISTER_SYMBOL(sort);
+  REGISTER_SYMBOL(bsearch);
+  REGISTER_SYMBOL(full_name_hash);
 
   fprintf(stderr, "driverhub: registered %zu KMI symbols\n", symbols_.size());
 }
