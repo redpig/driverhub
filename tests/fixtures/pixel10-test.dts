@@ -1,0 +1,219 @@
+/dts-v1/;
+
+/*
+ * Synthetic Pixel 10 Pro (blazer) device tree for DriverHub testing.
+ *
+ * This DTB exercises module enumeration through compatible strings
+ * that match GKI system_dlkm modules. It is NOT a real Pixel 10 DTB —
+ * it's a test fixture for validating that DriverHub's DT visitor can
+ * enumerate modules and trigger loading.
+ *
+ * Based on:
+ *   - GKI android15-6.6 system_dlkm modules (192 modules)
+ *   - Pixel 10 Pro (blazer) SoC: Google Tensor G5
+ */
+
+/ {
+	model = "Google Pixel 10 Pro (blazer) - DriverHub Test";
+	compatible = "google,blazer", "google,tensor-g5";
+
+	#address-cells = <2>;
+	#size-cells = <2>;
+
+	chosen {
+		bootargs = "console=ttyMSM0,115200n8";
+	};
+
+	/* RTC — tests rtc subsystem shims */
+	rtc@a000 {
+		compatible = "google,tensor-rtc";
+		reg = <0x0 0xa000 0x0 0x100>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+	};
+
+	/* I2C bus — tests i2c subsystem */
+	i2c@b000 {
+		compatible = "google,tensor-i2c";
+		reg = <0x0 0xb000 0x0 0x100>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		/* Touch controller */
+		touchscreen@48 {
+			compatible = "goodix,gt9886";
+			reg = <0x48>;
+		};
+	};
+
+	/* SPI bus — tests spi subsystem */
+	spi@c000 {
+		compatible = "google,tensor-spi";
+		reg = <0x0 0xc000 0x0 0x100>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+	};
+
+	/* GPIO controller — tests gpio subsystem */
+	gpio: gpio@d000 {
+		compatible = "google,tensor-gpio";
+		reg = <0x0 0xd000 0x0 0x100>;
+		gpio-controller;
+		#gpio-cells = <2>;
+	};
+
+	/* USB — tests usb subsystem shims */
+	usb@e000 {
+		compatible = "google,tensor-dwc3";
+		reg = <0x0 0xe000 0x0 0x1000>;
+	};
+
+	/* Bluetooth — exercises bluetooth.ko, rfcomm.ko, btsdio.ko */
+	bluetooth {
+		compatible = "google,tensor-bt";
+	};
+
+	/* WiFi — exercises cfg80211.ko, mac80211.ko */
+	wifi@10000 {
+		compatible = "google,tensor-wifi";
+		reg = <0x0 0x10000 0x0 0x1000>;
+	};
+
+	/* NFC — exercises nfc.ko */
+	nfc@11000 {
+		compatible = "google,tensor-nfc";
+		reg = <0x0 0x11000 0x0 0x100>;
+	};
+
+	/* Thermal zones — exercises thermal subsystem */
+	thermal-zones {
+		cpu-thermal {
+			polling-delay = <1000>;
+			polling-delay-passive = <250>;
+			thermal-sensors = <&tsens 0>;
+		};
+	};
+
+	tsens: thermal-sensor@12000 {
+		compatible = "google,tensor-tsens";
+		reg = <0x0 0x12000 0x0 0x1000>;
+		#thermal-sensor-cells = <1>;
+	};
+
+	/* Watchdog — exercises watchdog subsystem */
+	watchdog@13000 {
+		compatible = "google,tensor-wdt";
+		reg = <0x0 0x13000 0x0 0x100>;
+	};
+
+	/* PWM — exercises pwm subsystem */
+	pwm@14000 {
+		compatible = "google,tensor-pwm";
+		reg = <0x0 0x14000 0x0 0x100>;
+		#pwm-cells = <2>;
+	};
+
+	/* Input — exercises input.ko */
+	input {
+		compatible = "gpio-keys";
+
+		power-key {
+			label = "Power";
+			linux,code = <116>;  /* KEY_POWER */
+			gpios = <&gpio 0 1>;
+		};
+	};
+
+	/* SCSI / UFS storage — exercises scsi subsystem modules */
+	ufs@15000 {
+		compatible = "google,tensor-ufs";
+		reg = <0x0 0x15000 0x0 0x2000>;
+	};
+
+	/* Display / DRM — exercises drm modules */
+	display@16000 {
+		compatible = "google,tensor-display";
+		reg = <0x0 0x16000 0x0 0x10000>;
+	};
+
+	/* Power supply — exercises power_supply.ko */
+	battery {
+		compatible = "simple-battery";
+		voltage-min-design-microvolt = <3400000>;
+		voltage-max-design-microvolt = <4400000>;
+		charge-full-design-microamp-hours = <5000000>;
+	};
+
+	/* LEDs — exercises led subsystem */
+	leds {
+		compatible = "gpio-leds";
+
+		notification-led {
+			label = "notification";
+			gpios = <&gpio 1 0>;
+		};
+	};
+
+	/* Regulators — exercises regulator subsystem */
+	regulators {
+		compatible = "google,tensor-pmic";
+
+		vdd_cpu: regulator@0 {
+			compatible = "regulator-fixed";
+			regulator-name = "vdd_cpu";
+			regulator-min-microvolt = <800000>;
+			regulator-max-microvolt = <1200000>;
+		};
+	};
+
+	/* IOMMU — exercises iommu subsystem */
+	iommu@17000 {
+		compatible = "google,tensor-smmu";
+		reg = <0x0 0x17000 0x0 0x1000>;
+		#iommu-cells = <1>;
+	};
+
+	/* Clock controller — exercises clock subsystem */
+	clock-controller@18000 {
+		compatible = "google,tensor-cmu";
+		reg = <0x0 0x18000 0x0 0x2000>;
+		#clock-cells = <1>;
+	};
+
+	/* Pinctrl — exercises pinctrl subsystem */
+	pinctrl@19000 {
+		compatible = "google,tensor-pinctrl";
+		reg = <0x0 0x19000 0x0 0x1000>;
+	};
+
+	/* Network — exercises networking modules */
+	ethernet@1a000 {
+		compatible = "google,tensor-ethernet";
+		reg = <0x0 0x1a000 0x0 0x1000>;
+	};
+
+	/* CAN bus — exercises can.ko, can-bcm.ko, can-raw.ko, can-gw.ko, vcan.ko */
+	can@1b000 {
+		compatible = "google,tensor-can";
+		reg = <0x0 0x1b000 0x0 0x100>;
+	};
+
+	/* Crypto engine — exercises crypto modules */
+	crypto@1c000 {
+		compatible = "google,tensor-crypto";
+		reg = <0x0 0x1c000 0x0 0x1000>;
+	};
+
+	/* RNG */
+	rng@1d000 {
+		compatible = "google,tensor-rng", "cctrng";
+		reg = <0x0 0x1d000 0x0 0x100>;
+	};
+
+	/* Virtio (for QEMU testing) — exercises virtio_pci.ko */
+	virtio@1e000 {
+		compatible = "virtio,mmio";
+		reg = <0x0 0x1e000 0x0 0x200>;
+		interrupts = <0 44 4>;
+	};
+};

@@ -1,0 +1,225 @@
+Parsing /tmp/gki-artifacts/vmlinux.symvers...
+  8969 symbols in symvers
+  8837 from vmlinux, 132 from modules
+  5532 are EXPORT_SYMBOL_GPL
+
+Parsing src/symbols/symbol_registry.cc...
+  558 symbols registered
+
+=== Symbol Coverage ===
+  GKI exports:      8969
+  Registry provides: 558
+  Matched:           380 (4.2%)
+  Missing (GKI has, we don't): 8589
+  Extra (we have, GKI doesn't): 178
+
+--- Missing symbols (top 50) ---
+  ANDROID_GKI_memcg_stat_item                         vmlinux               EXPORT_SYMBOL_GPL
+  ANDROID_GKI_node_stat_item                          vmlinux               EXPORT_SYMBOL_GPL
+  ANDROID_GKI_struct_dwc3                             vmlinux               EXPORT_SYMBOL_GPL
+  ANDROID_GKI_struct_kernel_all_info                  vmlinux               EXPORT_SYMBOL_GPL
+  I_BDEV                                              vmlinux               EXPORT_SYMBOL
+  LZ4_compress_HC                                     vmlinux               EXPORT_SYMBOL
+  LZ4_compress_HC_continue                            vmlinux               EXPORT_SYMBOL
+  LZ4_compress_fast                                   vmlinux               EXPORT_SYMBOL
+  LZ4_compress_fast_continue                          vmlinux               EXPORT_SYMBOL
+  LZ4_decompress_safe                                 vmlinux               EXPORT_SYMBOL
+  LZ4_decompress_safe_continue                        vmlinux               EXPORT_SYMBOL
+  LZ4_decompress_safe_partial                         vmlinux               EXPORT_SYMBOL
+  LZ4_loadDict                                        vmlinux               EXPORT_SYMBOL
+  LZ4_loadDictHC                                      vmlinux               EXPORT_SYMBOL
+  LZ4_resetStreamHC                                   vmlinux               EXPORT_SYMBOL
+  LZ4_setStreamDecode                                 vmlinux               EXPORT_SYMBOL
+  __ClearPageMovable                                  vmlinux               EXPORT_SYMBOL
+  __SetPageMovable                                    vmlinux               EXPORT_SYMBOL
+  ___drm_dbg                                          vmlinux               EXPORT_SYMBOL
+  ___pskb_trim                                        vmlinux               EXPORT_SYMBOL
+  ___ratelimit                                        vmlinux               EXPORT_SYMBOL
+  ___update_load_sum                                  vmlinux               EXPORT_SYMBOL_GPL
+  __alloc_pages                                       vmlinux               EXPORT_SYMBOL
+  __alloc_pages_bulk                                  vmlinux               EXPORT_SYMBOL_GPL
+  __alloc_percpu                                      vmlinux               EXPORT_SYMBOL_GPL
+  __alloc_percpu_gfp                                  vmlinux               EXPORT_SYMBOL_GPL
+  __alloc_skb                                         vmlinux               EXPORT_SYMBOL
+  __arch_clear_user                                   vmlinux               EXPORT_SYMBOL
+  __arm_smccc_hvc                                     vmlinux               EXPORT_SYMBOL
+  __arm_smccc_smc                                     vmlinux               EXPORT_SYMBOL
+  __arm_smccc_sve_check                               vmlinux               EXPORT_SYMBOL
+  __auxiliary_device_add                              vmlinux               EXPORT_SYMBOL_GPL
+  __auxiliary_driver_register                         vmlinux               EXPORT_SYMBOL_GPL
+  __balance_callbacks                                 vmlinux               EXPORT_SYMBOL_GPL
+  __bforget                                           EXPORT_SYMBOL         VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver
+  __bh_read                                           vmlinux               EXPORT_SYMBOL
+  __bh_read_batch                                     vmlinux               EXPORT_SYMBOL
+  __bio_add_page                                      vmlinux               EXPORT_SYMBOL_GPL
+  __bitmap_and                                        vmlinux               EXPORT_SYMBOL
+  __bitmap_andnot                                     vmlinux               EXPORT_SYMBOL
+  __bitmap_clear                                      vmlinux               EXPORT_SYMBOL
+  __bitmap_complement                                 vmlinux               EXPORT_SYMBOL
+  __bitmap_equal                                      vmlinux               EXPORT_SYMBOL
+  __bitmap_or                                         vmlinux               EXPORT_SYMBOL
+  __bitmap_replace                                    vmlinux               EXPORT_SYMBOL
+  __bitmap_set                                        vmlinux               EXPORT_SYMBOL
+  __bitmap_shift_left                                 vmlinux               EXPORT_SYMBOL
+  __bitmap_shift_right                                vmlinux               EXPORT_SYMBOL
+  __bitmap_weight                                     vmlinux               EXPORT_SYMBOL
+  __bitmap_xor                                        vmlinux               EXPORT_SYMBOL
+
+Generated stubs in generated_stubs.cc
+
+=== Bulk Module Analysis: 96 modules ===
+
+Module                                        Resolved  Missing Coverage
+---------------------------------------------------------------------------
+  clk-gate_test.ko                                  26        0   100.0%
+  input_test.ko                                     23        0   100.0%
+  libarc4.ko                                         0        0   100.0%
+  rfkill.ko                                         57        0   100.0%
+  time_test.ko                                       5        0   100.0%
+  iio-test-format.ko                                 9        1    90.0%
+  lib_test.ko                                        5        1    83.3%
+  regmap-raw-ram.ko                                  4        1    80.0%
+  slhc.ko                                            8        2    80.0%
+  bsd_comp.ko                                        6        2    75.0%
+  ext4-inode-test.ko                                 3        1    75.0%
+  regmap-ram.ko                                      3        1    75.0%
+  pps_core.ko                                       30       15    66.7%
+  hid-uclogic-test.ko                               15       11    57.7%
+  usbmon.ko                                         35       28    55.6%
+  ptp.ko                                            37       33    52.9%
+  kunit-test.ko                                     18       17    51.4%
+  virtio_console.ko                                 51       50    50.5%
+  fat_test.ko                                        3        3    50.0%
+  soc-topology-test.ko                               9        9    50.0%
+  soc-utils-test.ko                                  4        4    50.0%
+  clk_test.ko                                       17       18    48.6%
+  kunit.ko                                          28       30    48.3%
+  kunit-example-test.ko                              7        8    46.7%
+  ptp_kvm.ko                                         5        6    45.5%
+  9pnet_fd.ko                                       19       23    45.2%
+  dev_addr_lists_test.ko                             9       11    45.0%
+  cctrng.ko                                         17       23    42.5%
+  open-dice.ko                                       8       11    42.1%
+  wwan.ko                                           31       44    41.3%
+  ppp_mppe.ko                                        7       10    41.2%
+  btbcm.ko                                           9       13    40.9%
+  usbserial.ko                                      42       63    40.0%
+  ppp_deflate.ko                                     7       12    36.8%
+  regmap-kunit.ko                                   11       19    36.7%
+  ftdi_sio.ko                                       17       30    36.2%
+  slcan.ko                                          19       34    35.8%
+  cdc-acm.ko                                        33       61    35.1%
+  virtio_blk.ko                                     34       64    34.7%
+  rtl8150.ko                                        18       34    34.6%
+  virtio_balloon.ko                                 27       51    34.6%
+  hci_uart.ko                                       60      115    34.3%
+  usbnet.ko                                         32       62    34.0%
+  9pnet.ko                                          27       56    32.5%
+  ieee802154.ko                                     29       63    31.5%
+  btqca.ko                                           9       20    31.0%
+  hidp.ko                                           32       72    30.8%
+  can-dev.ko                                        19       43    30.6%
+  r8152.ko                                          37       90    29.1%
+  nfc.ko                                            36       92    28.1%
+  zsmalloc.ko                                       14       36    28.0%
+  bluetooth.ko                                      64      167    27.7%
+  gzvm.ko                                           32       85    27.4%
+  zram.ko                                           29       82    26.1%
+  ppp_generic.ko                                    28       81    25.7%
+  can.ko                                            14       42    25.0%
+  kheaders.ko                                        1        3    25.0%
+  can-bcm.ko                                        18       57    24.0%
+  rfcomm.ko                                         34      111    23.4%
+  mac802154.ko                                      31      103    23.1%
+  tls.ko                                            32      108    22.9%
+  can-raw.ko                                        13       45    22.4%
+  8021q.ko                                          21       74    22.1%
+  cdc_eem.ko                                         5       18    21.7%
+  r8153_ecm.ko                                       3       11    21.4%
+  l2tp_core.ko                                      16       64    20.0%
+  vcan.ko                                            3       12    20.0%
+  ax88179_178a.ko                                   11       46    19.3%
+  btsdio.ko                                          6       26    18.8%
+  pppox.ko                                           2        9    18.2%
+  6lowpan.ko                                         5       23    17.9%
+  virtio_pci_modern_dev.ko                           4       19    17.4%
+  l2tp_ppp.ko                                       14       67    17.3%
+  cdc_ether.ko                                       5       24    17.2%
+  cdc_ncm.ko                                        12       58    17.1%
+  can-gw.ko                                          7       35    16.7%
+  mii.ko                                             1        5    16.7%
+  macsec.ko                                         16       82    16.3%
+  aqc111.ko                                          8       43    15.7%
+  virtio_pci.ko                                     14       77    15.4%
+  ieee802154_socket.ko                              11       64    14.7%
+  vmw_vsock_virtio_transport.ko                     11       64    14.7%
+  asix.ko                                           14       84    14.3%
+  vcpu_stall_detector.ko                             3       18    14.3%
+  pptp.ko                                            8       49    14.0%
+  virtio_pci_legacy_dev.ko                           2       13    13.3%
+  ieee802154_6lowpan.ko                              8       55    12.7%
+  tipc.ko                                           31      219    12.4%
+  diag.ko                                            1        9    10.0%
+  nhc_dest.ko                                        0        2     0.0%
+  nhc_fragment.ko                                    0        2     0.0%
+  nhc_hop.ko                                         0        2     0.0%
+  nhc_ipv6.ko                                        0        2     0.0%
+  nhc_mobility.ko                                    0        2     0.0%
+  nhc_routing.ko                                     0        2     0.0%
+  nhc_udp.ko                                         0        6     0.0%
+
+  Fully loadable: 5/96
+
+--- Most-needed missing symbols (top 50) ---
+  Symbol                                               Modules needing it
+  ------------------------------------------------------------------------
+  memset                                                   32  (GKI)
+  snprintf                                                 30  (GKI)
+  refcount_warn_saturate                                   29  (GKI)
+  kfree_skb_reason                                         29  (GKI)
+  skb_put                                                  28  (GKI)
+  _dev_err                                                 20  (GKI)
+  skb_pull                                                 19  (GKI)
+  skb_push                                                 19  (GKI)
+  __rcu_read_lock                                          18  (GKI)
+  __rcu_read_unlock                                        18  (GKI)
+  consume_skb                                              18  (GKI)
+  preempt_schedule_notrace                                 17  (GKI)
+  _raw_write_lock_bh                                       16  (GKI)
+  _raw_write_unlock_bh                                     16  (GKI)
+  strnlen                                                  16  (GKI)
+  strscpy                                                  16  (GKI)
+  __alloc_skb                                              16  (GKI)
+  _raw_spin_lock_bh                                        15  (GKI)
+  _raw_spin_unlock_bh                                      15  (GKI)
+  __pskb_pull_tail                                         15  (GKI)
+  skb_queue_purge_reason                                   15  (GKI)
+  _dev_info                                                15  (GKI)
+  _dev_warn                                                15  (GKI)
+  rtnl_lock                                                14  (GKI)
+  rtnl_unlock                                              14  (GKI)
+  skb_clone                                                14  (GKI)
+  sprintf                                                  14  (GKI)
+  skb_trim                                                 13  (GKI)
+  skb_queue_tail                                           13  (GKI)
+  dev_addr_mod                                             12  (GKI)
+  lock_sock_nested                                         12  (GKI)
+  release_sock                                             12  (GKI)
+  sk_free                                                  12  (GKI)
+  skb_dequeue                                              12  (GKI)
+  netdev_warn                                              11  (GKI)
+  remove_wait_queue                                        11  (GKI)
+  add_wait_queue                                           11  (GKI)
+  kmemdup                                                  11  (GKI)
+  synchronize_rcu                                          11  (GKI)
+  register_netdevice_notifier                              10  (GKI)
+  unregister_netdevice_notifier                            10  (GKI)
+  module_put                                               10  (GKI)
+  cpu_number                                               10  (GKI)
+  iov_iter_revert                                          10  (GKI)
+  get_random_bytes                                         10  (GKI)
+  alloc_workqueue                                          10  (GKI)
+  sock_no_mmap                                             10  (GKI)
+  netif_carrier_off                                         9  (GKI)
+  netif_carrier_on                                          9  (GKI)
+  nla_put                                                   9  (GKI)
