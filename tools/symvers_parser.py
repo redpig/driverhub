@@ -357,13 +357,50 @@ def generate_registry_entries(missing: set[str]) -> str:
     return "\n".join(lines)
 
 
+def parse_kmi_symbol_list(path: str) -> set[str]:
+    """Parse a GKI KMI symbol list file.
+
+    KMI symbol lists are plain text files with one symbol name per line.
+    Used by the GKI build system to track which exported symbols are part
+    of the stable KMI. See:
+      https://source.android.com/docs/core/architecture/kernel/howto-symbol-lists
+
+    Format: one symbol name per line, lines starting with # are comments.
+    """
+    symbols = set()
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            # Some files have format: [group] symbol
+            parts = line.split()
+            symbols.add(parts[-1])  # Take the last token as the symbol name.
+    return symbols
+
+
+def compare_kmi_to_registry(kmi_symbols: set[str], registry: set[str]) -> tuple[set[str], set[str], set[str]]:
+    """Compare KMI symbol list against our registry.
+
+    Returns (matched, missing_from_registry, extra_in_registry).
+    """
+    matched = kmi_symbols & registry
+    missing = kmi_symbols - registry
+    extra = registry - kmi_symbols
+    return matched, missing, extra
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Parse GKI vmlinux.symvers and compare with DriverHub registry"
     )
     parser.add_argument(
-        "--symvers", required=True,
+        "--symvers", required=False,
         help="Path to vmlinux.symvers or Module.symvers file"
+    )
+    parser.add_argument(
+        "--kmi-symbols",
+        help="Path to a GKI KMI symbol list file (plain text, one symbol per line)"
     )
     parser.add_argument(
         "--registry",
@@ -399,6 +436,34 @@ def main():
     )
 
     args = parser.parse_args()
+
+    if not args.symvers and not args.kmi_symbols:
+        parser.error("Must specify at least one of --symvers or --kmi-symbols")
+
+    # Parse KMI symbol list if provided.
+    if args.kmi_symbols:
+        print(f"Parsing KMI symbol list {args.kmi_symbols}...")
+        kmi_symbols = parse_kmi_symbol_list(args.kmi_symbols)
+        print(f"  {len(kmi_symbols)} KMI symbols")
+
+        if args.registry:
+            registry = parse_registry(args.registry)
+            matched, missing, extra = compare_kmi_to_registry(kmi_symbols, registry)
+            coverage = len(matched) / len(kmi_symbols) * 100 if kmi_symbols else 0
+            print(f"\n=== KMI Symbol Coverage ===")
+            print(f"  KMI symbols:       {len(kmi_symbols)}")
+            print(f"  Registry provides: {len(registry)}")
+            print(f"  Matched:           {len(matched)} ({coverage:.1f}%)")
+            print(f"  Missing (KMI needs, we don't have): {len(missing)}")
+            print(f"  Extra (we have, not in KMI): {len(extra)}")
+
+            if missing:
+                print(f"\n--- Missing KMI symbols (top {min(50, len(missing))}) ---")
+                for name in sorted(missing)[:50]:
+                    print(f"  {name}")
+
+        if not args.symvers:
+            return
 
     # Parse symvers
     print(f"Parsing {args.symvers}...")
