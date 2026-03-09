@@ -57,4 +57,52 @@ void vfree(const void* addr) {
   free(const_cast<void*>(addr));
 }
 
+// kmem_cache — simplified slab allocator backed by malloc.
+// The "cache" just remembers the object size for allocation.
+
+struct kmem_cache {
+  size_t object_size;
+  char name[32];
+};
+
+struct kmem_cache* kmem_cache_create(const char* name, unsigned int size,
+                                      unsigned int align, unsigned long flags,
+                                      void (*ctor)(void*)) {
+  (void)align; (void)flags; (void)ctor;
+  auto* cache = static_cast<struct kmem_cache*>(
+      calloc(1, sizeof(struct kmem_cache)));
+  if (!cache) return nullptr;
+  cache->object_size = size;
+  if (name) {
+    strncpy(cache->name, name, sizeof(cache->name) - 1);
+  }
+  return cache;
+}
+
+struct kmem_cache* kmem_cache_create_usercopy(const char* name,
+                                               unsigned int size,
+                                               unsigned int align,
+                                               unsigned long flags,
+                                               unsigned int useroffset,
+                                               unsigned int usersize,
+                                               void (*ctor)(void*)) {
+  (void)useroffset; (void)usersize;
+  return kmem_cache_create(name, size, align, flags, ctor);
+}
+
+void kmem_cache_destroy(struct kmem_cache* cache) {
+  free(cache);
+}
+
+void* kmem_cache_alloc(struct kmem_cache* cache, unsigned int flags) {
+  (void)flags;
+  if (!cache) return nullptr;
+  return calloc(1, cache->object_size);
+}
+
+void kmem_cache_free(struct kmem_cache* cache, void* obj) {
+  (void)cache;
+  free(obj);
+}
+
 }  // extern "C"

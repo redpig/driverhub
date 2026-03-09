@@ -46,9 +46,6 @@ int __alloc_percpu(void) { return 0; }
 // __alloc_percpu_gfp — 4 module(s)
 int __alloc_percpu_gfp(void) { return 0; }
 
-// __alloc_skb — 16 module(s)
-int __alloc_skb(void) { return 0; }
-
 // __bio_add_page — 1 module(s)
 int __bio_add_page(void) { return 0; }
 
@@ -94,26 +91,11 @@ int __cpuhp_state_remove_instance(void) { return 0; }
 // __crypto_memneq — 1 module(s)
 int __crypto_memneq(void) { return 0; }
 
-// __dev_change_net_namespace — 1 module(s)
-int __dev_change_net_namespace(void) { return 0; }
-
 // __dev_fwnode — 1 module(s)
 int __dev_fwnode(void) { return 0; }
 
-// __dev_get_by_index — 5 module(s)
-int __dev_get_by_index(void) { return 0; }
-
-// __dev_get_by_name — 1 module(s)
-int __dev_get_by_name(void) { return 0; }
-
-// __dev_queue_xmit — 6 module(s)
-int __dev_queue_xmit(void) { return 0; }
-
 // __devm_alloc_percpu — 1 module(s)
 int __devm_alloc_percpu(void) { return 0; }
-
-// __ethtool_get_link_ksettings — 1 module(s)
-int __ethtool_get_link_ksettings(void) { return 0; }
 
 // __fdget — 1 module(s)
 int __fdget(void) { return 0; }
@@ -219,9 +201,6 @@ int __napi_schedule(void) { return 0; }
 
 // __ndisc_fill_addr_option — 1 module(s)
 int __ndisc_fill_addr_option(void) { return 0; }
-
-// __netdev_alloc_skb — 8 module(s)
-int __netdev_alloc_skb(void) { return 0; }
 
 // __netif_napi_del — 1 module(s)
 int __netif_napi_del(void) { return 0; }
@@ -564,14 +543,8 @@ int alloc_candev_mqs(void) { return 0; }
 // alloc_etherdev_mqs — 4 module(s)
 int alloc_etherdev_mqs(void) { return 0; }
 
-// alloc_netdev_mqs — 5 module(s)
-int alloc_netdev_mqs(void) { return 0; }
-
 // alloc_pages_exact — 1 module(s)
 int alloc_pages_exact(void) { return 0; }
-
-// alloc_skb_with_frags — 2 module(s)
-int alloc_skb_with_frags(void) { return 0; }
 
 // alloc_workqueue — 10 module(s)
 int alloc_workqueue(void) { return 0; }
@@ -910,9 +883,6 @@ int clocks_calc_mult_shift(void) { return 0; }
 // close_candev — 1 module(s)
 int close_candev(void) { return 0; }
 
-// consume_skb — 18 module(s)
-int consume_skb(void) { return 0; }
-
 
 // crc16 — 1 module(s)
 int crc16(void) { return 0; }
@@ -1037,17 +1007,11 @@ int default_llseek(void) { return 0; }
 // default_wake_function — 6 module(s)
 int default_wake_function(void) { return 0; }
 
-// dev_add_pack — 4 module(s)
-int dev_add_pack(void) { return 0; }
-
 // dev_addr_add — 1 module(s)
 int dev_addr_add(void) { return 0; }
 
 // dev_addr_del — 1 module(s)
 int dev_addr_del(void) { return 0; }
-
-// dev_addr_mod — 12 module(s)
-int dev_addr_mod(void) { return 0; }
 
 // dev_alloc_name — 1 module(s)
 int dev_alloc_name(void) { return 0; }
@@ -1082,20 +1046,11 @@ int dev_get_flags(void) { return 0; }
 // dev_get_stats — 1 module(s)
 int dev_get_stats(void) { return 0; }
 
-// dev_get_tstats64 — 5 module(s)
-int dev_get_tstats64(void) { return 0; }
-
 // dev_getbyhwaddr_rcu — 1 module(s)
 int dev_getbyhwaddr_rcu(void) { return 0; }
 
 // dev_getfirstbyhwtype — 1 module(s)
 int dev_getfirstbyhwtype(void) { return 0; }
-
-// dev_kfree_skb_any_reason — 9 module(s)
-int dev_kfree_skb_any_reason(void) { return 0; }
-
-// dev_kfree_skb_irq_reason — 4 module(s)
-int dev_kfree_skb_irq_reason(void) { return 0; }
 
 // dev_load — 1 module(s)
 int dev_load(void) { return 0; }
@@ -1108,9 +1063,6 @@ int dev_mc_unsync(void) { return 0; }
 
 // dev_nit_active — 1 module(s)
 int dev_nit_active(void) { return 0; }
-
-// dev_remove_pack — 4 module(s)
-int dev_remove_pack(void) { return 0; }
 
 // dev_set_allmulti — 2 module(s)
 int dev_set_allmulti(void) { return 0; }
@@ -1129,9 +1081,6 @@ int dev_uc_add(void) { return 0; }
 
 // dev_uc_add_excl — 1 module(s)
 int dev_uc_add_excl(void) { return 0; }
-
-// dev_uc_del — 3 module(s)
-int dev_uc_del(void) { return 0; }
 
 // dev_uc_sync — 2 module(s)
 int dev_uc_sync(void) { return 0; }
@@ -1277,9 +1226,6 @@ int dst_cache_set_ip4(void) { return 0; }
 // dst_cache_set_ip6 — 1 module(s)
 int dst_cache_set_ip6(void) { return 0; }
 
-// dst_release — 6 module(s)
-int dst_release(void) { return 0; }
-
 // efi — 1 module(s)
 int efi(void) { return 0; }
 
@@ -1292,26 +1238,8 @@ int eth_mac_addr(void) { return 0; }
 // eth_platform_get_mac_address — 3 module(s)
 int eth_platform_get_mac_address(void) { return 0; }
 
-// eth_type_trans — 5 module(s)
-int eth_type_trans(void) { return 0; }
-
 // eth_validate_addr — 8 module(s)
 int eth_validate_addr(void) { return 0; }
-
-// ether_setup — 2 module(s)
-int ether_setup(void) { return 0; }
-
-// ethtool_convert_legacy_u32_to_link_mode — 2 module(s)
-int ethtool_convert_legacy_u32_to_link_mode(void) { return 0; }
-
-// ethtool_convert_link_mode_to_legacy_u32 — 1 module(s)
-int ethtool_convert_link_mode_to_legacy_u32(void) { return 0; }
-
-// ethtool_op_get_link — 6 module(s)
-int ethtool_op_get_link(void) { return 0; }
-
-// ethtool_op_get_ts_info — 6 module(s)
-int ethtool_op_get_ts_info(void) { return 0; }
 
 // eventfd_ctx_do_read — 1 module(s)
 int eventfd_ctx_do_read(void) { return 0; }
@@ -1402,15 +1330,6 @@ int generic_hwtstamp_set_lower(void) { return 0; }
 
 // generic_mii_ioctl — 2 module(s)
 int generic_mii_ioctl(void) { return 0; }
-
-// genl_register_family — 4 module(s)
-int genl_register_family(void) { return 0; }
-
-// genl_unregister_family — 4 module(s)
-int genl_unregister_family(void) { return 0; }
-
-// genlmsg_put — 4 module(s)
-int genlmsg_put(void) { return 0; }
 
 // genphy_resume — 1 module(s)
 int genphy_resume(void) { return 0; }
@@ -1792,15 +1711,6 @@ int kfree_const(void) { return 0; }
 // kfree_sensitive — 5 module(s)
 int kfree_sensitive(void) { return 0; }
 
-// kfree_skb_list_reason — 1 module(s)
-int kfree_skb_list_reason(void) { return 0; }
-
-// kfree_skb_partial — 1 module(s)
-int kfree_skb_partial(void) { return 0; }
-
-// kfree_skb_reason — 29 module(s)
-int kfree_skb_reason(void) { return 0; }
-
 // kill_fasync — 2 module(s)
 int kill_fasync(void) { return 0; }
 
@@ -1815,21 +1725,6 @@ int kmalloc_large_node(void) { return 0; }
 
 // kmalloc_node_trace — 1 module(s)
 int kmalloc_node_trace(void) { return 0; }
-
-// kmem_cache_alloc — 5 module(s)
-int kmem_cache_alloc(void) { return 0; }
-
-// kmem_cache_create — 5 module(s)
-int kmem_cache_create(void) { return 0; }
-
-// kmem_cache_create_usercopy — 1 module(s)
-int kmem_cache_create_usercopy(void) { return 0; }
-
-// kmem_cache_destroy — 5 module(s)
-int kmem_cache_destroy(void) { return 0; }
-
-// kmem_cache_free — 5 module(s)
-int kmem_cache_free(void) { return 0; }
 
 
 // kobject_get — 1 module(s)
@@ -2090,8 +1985,6 @@ int mdiobus_unregister(void) { return 0; }
 // memcg_sockets_enabled_key — 1 module(s)
 int memcg_sockets_enabled_key(void) { return 0; }
 
-// memchr — 1 module(s)
-int memchr(void) { return 0; }
 
 // memchr_inv — 2 module(s)
 int memchr_inv(void) { return 0; }
@@ -2154,21 +2047,6 @@ int mutex_lock_interruptible(void) { return 0; }
 // n_tty_ioctl_helper — 1 module(s)
 int n_tty_ioctl_helper(void) { return 0; }
 
-// napi_complete_done — 2 module(s)
-int napi_complete_done(void) { return 0; }
-
-// napi_disable — 1 module(s)
-int napi_disable(void) { return 0; }
-
-// napi_enable — 2 module(s)
-int napi_enable(void) { return 0; }
-
-// napi_gro_receive — 1 module(s)
-int napi_gro_receive(void) { return 0; }
-
-// napi_schedule_prep — 2 module(s)
-int napi_schedule_prep(void) { return 0; }
-
 // nd_tbl — 1 module(s)
 int nd_tbl(void) { return 0; }
 
@@ -2193,80 +2071,17 @@ int net_selftest_get_count(void) { return 0; }
 // net_selftest_get_strings — 1 module(s)
 int net_selftest_get_strings(void) { return 0; }
 
-// netdev_err — 8 module(s)
-int netdev_err(void) { return 0; }
-
-// netdev_info — 8 module(s)
-int netdev_info(void) { return 0; }
-
 // netdev_name_in_use — 1 module(s)
 int netdev_name_in_use(void) { return 0; }
 
-// netdev_notice — 2 module(s)
-int netdev_notice(void) { return 0; }
-
-// netdev_printk — 2 module(s)
-int netdev_printk(void) { return 0; }
-
-// netdev_rx_handler_register — 1 module(s)
-int netdev_rx_handler_register(void) { return 0; }
-
-// netdev_rx_handler_unregister — 1 module(s)
-int netdev_rx_handler_unregister(void) { return 0; }
-
-// netdev_update_features — 1 module(s)
-int netdev_update_features(void) { return 0; }
-
-// netdev_upper_dev_link — 2 module(s)
-int netdev_upper_dev_link(void) { return 0; }
-
-// netdev_upper_dev_unlink — 2 module(s)
-int netdev_upper_dev_unlink(void) { return 0; }
-
-// netdev_warn — 11 module(s)
-int netdev_warn(void) { return 0; }
-
-// netif_carrier_off — 9 module(s)
-int netif_carrier_off(void) { return 0; }
-
-// netif_carrier_on — 9 module(s)
-int netif_carrier_on(void) { return 0; }
-
-// netif_device_attach — 3 module(s)
-int netif_device_attach(void) { return 0; }
-
-// netif_device_detach — 3 module(s)
-int netif_device_detach(void) { return 0; }
-
 // netif_inherit_tso_max — 1 module(s)
 int netif_inherit_tso_max(void) { return 0; }
-
-// netif_napi_add_weight — 2 module(s)
-int netif_napi_add_weight(void) { return 0; }
-
-// netif_receive_skb — 2 module(s)
-int netif_receive_skb(void) { return 0; }
-
-// netif_rx — 9 module(s)
-int netif_rx(void) { return 0; }
-
-// netif_set_tso_max_size — 3 module(s)
-int netif_set_tso_max_size(void) { return 0; }
-
-// netif_stacked_transfer_operstate — 2 module(s)
-int netif_stacked_transfer_operstate(void) { return 0; }
 
 // netif_tx_lock — 2 module(s)
 int netif_tx_lock(void) { return 0; }
 
 // netif_tx_unlock — 2 module(s)
 int netif_tx_unlock(void) { return 0; }
-
-// netif_tx_wake_queue — 6 module(s)
-int netif_tx_wake_queue(void) { return 0; }
-
-// netlink_broadcast — 2 module(s)
-int netlink_broadcast(void) { return 0; }
 
 // netlink_capable — 1 module(s)
 int netlink_capable(void) { return 0; }
@@ -2276,9 +2091,6 @@ int netlink_net_capable(void) { return 0; }
 
 // netlink_register_notifier — 1 module(s)
 int netlink_register_notifier(void) { return 0; }
-
-// netlink_unicast — 3 module(s)
-int netlink_unicast(void) { return 0; }
 
 // netlink_unregister_notifier — 1 module(s)
 int netlink_unregister_notifier(void) { return 0; }
@@ -2300,18 +2112,6 @@ int nl802154_scan_event(void) { return 0; }
 
 // nl802154_scan_started — 1 module(s)
 int nl802154_scan_started(void) { return 0; }
-
-// nla_memcpy — 4 module(s)
-int nla_memcpy(void) { return 0; }
-
-// nla_put — 9 module(s)
-int nla_put(void) { return 0; }
-
-// nla_put_64bit — 3 module(s)
-int nla_put_64bit(void) { return 0; }
-
-// nla_strscpy — 3 module(s)
-int nla_strscpy(void) { return 0; }
 
 // nonseekable_open — 1 module(s)
 int nonseekable_open(void) { return 0; }
@@ -2633,15 +2433,6 @@ int proc_dointvec_minmax(void) { return 0; }
 // proc_doulongvec_minmax — 2 module(s)
 int proc_doulongvec_minmax(void) { return 0; }
 
-// proto_register — 9 module(s)
-int proto_register(void) { return 0; }
-
-// proto_unregister — 9 module(s)
-int proto_unregister(void) { return 0; }
-
-// pskb_expand_head — 8 module(s)
-int pskb_expand_head(void) { return 0; }
-
 // pskb_put — 1 module(s)
 int pskb_put(void) { return 0; }
 
@@ -2737,20 +2528,8 @@ int register_module_notifier(void) { return 0; }
 // register_net_sysctl_sz — 2 module(s)
 int register_net_sysctl_sz(void) { return 0; }
 
-// register_netdevice — 6 module(s)
-int register_netdevice(void) { return 0; }
-
-// register_netdevice_notifier — 10 module(s)
-int register_netdevice_notifier(void) { return 0; }
-
 // register_oom_notifier — 1 module(s)
 int register_oom_notifier(void) { return 0; }
-
-// register_pernet_device — 5 module(s)
-int register_pernet_device(void) { return 0; }
-
-// register_pernet_subsys — 7 module(s)
-int register_pernet_subsys(void) { return 0; }
 
 // register_pm_notifier — 2 module(s)
 int register_pm_notifier(void) { return 0; }
@@ -2870,23 +2649,8 @@ int rtnl_configure_link(void) { return 0; }
 // rtnl_create_link — 1 module(s)
 int rtnl_create_link(void) { return 0; }
 
-// rtnl_is_locked — 6 module(s)
-int rtnl_is_locked(void) { return 0; }
-
-// rtnl_link_register — 7 module(s)
-int rtnl_link_register(void) { return 0; }
-
-// rtnl_link_unregister — 7 module(s)
-int rtnl_link_unregister(void) { return 0; }
-
-// rtnl_lock — 14 module(s)
-int rtnl_lock(void) { return 0; }
-
 // rtnl_register_module — 1 module(s)
 int rtnl_register_module(void) { return 0; }
-
-// rtnl_unlock — 14 module(s)
-int rtnl_unlock(void) { return 0; }
 
 // rtnl_unregister — 1 module(s)
 int rtnl_unregister(void) { return 0; }
@@ -3044,23 +2808,14 @@ int simple_open(void) { return 0; }
 // simple_read_from_buffer — 3 module(s)
 int simple_read_from_buffer(void) { return 0; }
 
-// sk_alloc — 7 module(s)
-int sk_alloc(void) { return 0; }
-
 // sk_capable — 1 module(s)
 int sk_capable(void) { return 0; }
 
 // sk_common_release — 1 module(s)
 int sk_common_release(void) { return 0; }
 
-// sk_error_report — 5 module(s)
-int sk_error_report(void) { return 0; }
-
 // sk_filter_trim_cap — 1 module(s)
 int sk_filter_trim_cap(void) { return 0; }
-
-// sk_free — 12 module(s)
-int sk_free(void) { return 0; }
 
 // sk_ioctl — 1 module(s)
 int sk_ioctl(void) { return 0; }
@@ -3125,20 +2880,11 @@ int skb_add_rx_frag(void) { return 0; }
 // skb_checksum_help — 1 module(s)
 int skb_checksum_help(void) { return 0; }
 
-// skb_clone — 14 module(s)
-int skb_clone(void) { return 0; }
-
 // skb_copy — 6 module(s)
 int skb_copy(void) { return 0; }
 
 // skb_copy_bits — 4 module(s)
 int skb_copy_bits(void) { return 0; }
-
-// skb_copy_datagram_iter — 7 module(s)
-int skb_copy_datagram_iter(void) { return 0; }
-
-// skb_copy_expand — 7 module(s)
-int skb_copy_expand(void) { return 0; }
 
 // skb_copy_header — 1 module(s)
 int skb_copy_header(void) { return 0; }
@@ -3146,14 +2892,8 @@ int skb_copy_header(void) { return 0; }
 // skb_cow_data — 2 module(s)
 int skb_cow_data(void) { return 0; }
 
-// skb_dequeue — 12 module(s)
-int skb_dequeue(void) { return 0; }
-
 // skb_free_datagram — 5 module(s)
 int skb_free_datagram(void) { return 0; }
-
-// skb_pull — 19 module(s)
-int skb_pull(void) { return 0; }
 
 // skb_pull_data — 2 module(s)
 int skb_pull_data(void) { return 0; }
@@ -3161,20 +2901,8 @@ int skb_pull_data(void) { return 0; }
 // skb_pull_rcsum — 1 module(s)
 int skb_pull_rcsum(void) { return 0; }
 
-// skb_push — 19 module(s)
-int skb_push(void) { return 0; }
-
-// skb_put — 28 module(s)
-int skb_put(void) { return 0; }
-
 // skb_queue_head — 7 module(s)
 int skb_queue_head(void) { return 0; }
-
-// skb_queue_purge_reason — 15 module(s)
-int skb_queue_purge_reason(void) { return 0; }
-
-// skb_queue_tail — 13 module(s)
-int skb_queue_tail(void) { return 0; }
 
 // skb_realloc_headroom — 1 module(s)
 int skb_realloc_headroom(void) { return 0; }
@@ -3193,9 +2921,6 @@ int skb_splice_bits(void) { return 0; }
 
 // skb_to_sgvec — 3 module(s)
 int skb_to_sgvec(void) { return 0; }
-
-// skb_trim — 13 module(s)
-int skb_trim(void) { return 0; }
 
 // skb_try_coalesce — 1 module(s)
 int skb_try_coalesce(void) { return 0; }
@@ -3258,9 +2983,6 @@ int snd_soc_unregister_component(void) { return 0; }
 // sock_alloc_file — 1 module(s)
 int sock_alloc_file(void) { return 0; }
 
-// sock_alloc_send_pskb — 5 module(s)
-int sock_alloc_send_pskb(void) { return 0; }
-
 // sock_cmsg_send — 1 module(s)
 int sock_cmsg_send(void) { return 0; }
 
@@ -3297,12 +3019,6 @@ int sock_i_ino(void) { return 0; }
 // sock_i_uid — 2 module(s)
 int sock_i_uid(void) { return 0; }
 
-// sock_init_data — 7 module(s)
-int sock_init_data(void) { return 0; }
-
-// sock_no_accept — 9 module(s)
-int sock_no_accept(void) { return 0; }
-
 // sock_no_bind — 5 module(s)
 int sock_no_bind(void) { return 0; }
 
@@ -3315,26 +3031,11 @@ int sock_no_getname(void) { return 0; }
 // sock_no_ioctl — 1 module(s)
 int sock_no_ioctl(void) { return 0; }
 
-// sock_no_listen — 9 module(s)
-int sock_no_listen(void) { return 0; }
-
-// sock_no_mmap — 10 module(s)
-int sock_no_mmap(void) { return 0; }
-
 // sock_no_recvmsg — 2 module(s)
 int sock_no_recvmsg(void) { return 0; }
 
 // sock_no_sendmsg — 3 module(s)
 int sock_no_sendmsg(void) { return 0; }
-
-// sock_no_shutdown — 8 module(s)
-int sock_no_shutdown(void) { return 0; }
-
-// sock_no_socketpair — 9 module(s)
-int sock_no_socketpair(void) { return 0; }
-
-// sock_queue_rcv_skb_reason — 7 module(s)
-int sock_queue_rcv_skb_reason(void) { return 0; }
 
 // sock_recv_errqueue — 2 module(s)
 int sock_recv_errqueue(void) { return 0; }
@@ -3342,17 +3043,11 @@ int sock_recv_errqueue(void) { return 0; }
 // sock_recvmsg — 1 module(s)
 int sock_recvmsg(void) { return 0; }
 
-// sock_register — 6 module(s)
-int sock_register(void) { return 0; }
-
 // sock_release — 4 module(s)
 int sock_release(void) { return 0; }
 
 // sock_rfree — 1 module(s)
 int sock_rfree(void) { return 0; }
-
-// sock_unregister — 6 module(s)
-int sock_unregister(void) { return 0; }
 
 // sock_wmalloc — 1 module(s)
 int sock_wmalloc(void) { return 0; }
@@ -3475,8 +3170,6 @@ int timecounter_init(void) { return 0; }
 // timecounter_read — 1 module(s)
 int timecounter_read(void) { return 0; }
 
-// timer_delete — 3 module(s)
-int timer_delete(void) { return 0; }
 
 // timer_delete_sync — 7 module(s)
 int timer_delete_sync(void) { return 0; }
@@ -3671,23 +3364,8 @@ int unregister_module_notifier(void) { return 0; }
 // unregister_net_sysctl_table — 2 module(s)
 int unregister_net_sysctl_table(void) { return 0; }
 
-// unregister_netdevice_many — 4 module(s)
-int unregister_netdevice_many(void) { return 0; }
-
-// unregister_netdevice_notifier — 10 module(s)
-int unregister_netdevice_notifier(void) { return 0; }
-
-// unregister_netdevice_queue — 6 module(s)
-int unregister_netdevice_queue(void) { return 0; }
-
 // unregister_oom_notifier — 1 module(s)
 int unregister_oom_notifier(void) { return 0; }
-
-// unregister_pernet_device — 5 module(s)
-int unregister_pernet_device(void) { return 0; }
-
-// unregister_pernet_subsys — 7 module(s)
-int unregister_pernet_subsys(void) { return 0; }
 
 // unregister_pm_notifier — 2 module(s)
 int unregister_pm_notifier(void) { return 0; }

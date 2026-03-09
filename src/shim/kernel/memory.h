@@ -33,6 +33,23 @@ void* krealloc(const void* p, size_t new_size, gfp_t flags);
 void* kcalloc(size_t n, size_t size, gfp_t flags);
 void kfree(const void* p);
 
+// Slab cache allocator — simplified kmem_cache backed by malloc.
+struct kmem_cache;
+
+struct kmem_cache* kmem_cache_create(const char* name, unsigned int size,
+                                      unsigned int align, unsigned long flags,
+                                      void (*ctor)(void*));
+struct kmem_cache* kmem_cache_create_usercopy(const char* name,
+                                               unsigned int size,
+                                               unsigned int align,
+                                               unsigned long flags,
+                                               unsigned int useroffset,
+                                               unsigned int usersize,
+                                               void (*ctor)(void*));
+void kmem_cache_destroy(struct kmem_cache* cache);
+void* kmem_cache_alloc(struct kmem_cache* cache, unsigned int flags);
+void kmem_cache_free(struct kmem_cache* cache, void* obj);
+
 void* vmalloc(unsigned long size);
 void* vzalloc(unsigned long size);
 void vfree(const void* addr);

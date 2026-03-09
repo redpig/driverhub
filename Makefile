@@ -51,6 +51,7 @@ LIB_SRCS := \
 	src/shim/subsystem/pwm.cc \
 	src/shim/subsystem/led.cc \
 	src/shim/subsystem/kunit.cc \
+	src/shim/subsystem/net.cc \
 	src/shim/kernel/rfkill_stubs.cc \
 	src/shim/kernel/gki_stubs.cc \
 	src/shim/kernel/libc_stubs.cc \
@@ -112,6 +113,7 @@ GKI_SRCS := \
 	src/shim/subsystem/pwm.cc \
 	src/shim/subsystem/led.cc \
 	src/shim/subsystem/kunit.cc \
+	src/shim/subsystem/net.cc \
 	src/shim/kernel/rfkill_stubs.cc \
 	src/shim/kernel/gki_stubs.cc \
 	src/shim/kernel/libc_stubs.cc \
