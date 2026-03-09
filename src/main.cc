@@ -24,15 +24,6 @@
 #include "src/fuchsia/resource_provider.h"
 #endif
 
-static int load_module(driverhub::BusDriver& bus, const char* path) {
-  fprintf(stderr, "\n--- Loading %s ---\n", path);
-  int status = bus.LoadModuleFromFile(path);
-  if (status != 0) {
-    fprintf(stderr, "error: failed to load %s (status=%d)\n", path, status);
-  }
-  return status;
-}
-
 int main(int argc, char** argv) {
   if (argc < 2) {
     fprintf(stderr, "usage: %s [--manifest <file>] <module.ko> ...\n", argv[0]);
@@ -76,10 +67,9 @@ int main(int argc, char** argv) {
     }
   }
 
-  fprintf(stderr, "\n--- Loading %zu module(s) ---\n", modules.size());
-  for (const auto& path : modules) {
-    load_module(bus, path.c_str());
-  }
+  fprintf(stderr, "\n--- Loading %zu module(s) with dependency sorting ---\n",
+          modules.size());
+  bus.LoadModulesFromFiles(modules);
 
   fprintf(stderr, "\n--- %zu module(s) loaded ---\n", bus.module_count());
 

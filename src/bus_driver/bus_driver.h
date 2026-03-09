@@ -44,6 +44,10 @@ class BusDriver {
   // via topological sort before loading in order.
   zx_status_t LoadModulesFromDirectory(const std::string& dir_path);
 
+  // Load .ko modules from a list of file paths, resolving dependencies
+  // via topological sort before loading in order.
+  zx_status_t LoadModulesFromFiles(const std::vector<std::string>& paths);
+
   size_t module_count() const { return nodes_.size(); }
 
  private:

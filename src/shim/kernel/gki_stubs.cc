@@ -2422,7 +2422,12 @@ int proc_create_net_data(void) { return 0; }
 int proc_create_net_single(void) { return 0; }
 
 // proc_create_seq_private — 1 module(s)
-int proc_create_seq_private(void) { return 0; }
+// Returns pointer to proc_dir_entry. Must be non-NULL for callers that
+// check for failure (e.g. bluetooth bt_procfs_init).
+void* proc_create_seq_private(void) {
+  static char dummy_proc_entry[64];
+  return dummy_proc_entry;
+}
 
 // proc_dointvec_jiffies — 1 module(s)
 int proc_dointvec_jiffies(void) { return 0; }

@@ -573,6 +573,159 @@ std::unique_ptr<LoadedModule> ModuleLoader::Load(std::string_view name,
     }
   }
 
+  // Patch out ARM64 privileged instructions that trap in userspace.
+  //
+  // GKI .ko modules contain inline kernel code (uaccess, IRQ masking,
+  // page-table switches) that uses EL1 system registers. These cause
+  // SIGILL when executed in userspace.  Patch them to NOPs or safe
+  // userspace equivalents:
+  //
+  //   MSR TTBR0_EL1, Xn  →  NOP   (page-table switch, not needed)
+  //   MSR TTBR1_EL1, Xn  →  NOP
+  //   MRS Xn, TTBR1_EL1  →  NOP   (result unused after patching MSR)
+  //   MSR DAIFSet, #imm   →  NOP   (IRQ masking, no IRQs in userspace)
+  //   MSR DAIFClr, #imm   →  NOP
+  //   MSR DAIF, Xn        →  NOP
+  //   MRS Xn, DAIF        →  MOV Xn, #0  (pretend no IRQs masked)
+  //   MRS Xn, SP_EL0      →  LDR of fake current task pointer
+  //
+  // SP_EL0 is used by the kernel to hold 'current' (struct task_struct*).
+  // We provide a fake task struct so that common patterns like
+  // current->mm, current->flags don't fault.
+#if defined(__aarch64__)
+  {
+    constexpr uint32_t kNop = 0xd503201f;
+    size_t priv_patched = 0;
+
+    // Fake 'current' task struct — a 16KB zeroed buffer.
+    // Placed at a fixed address so MRS Xn, SP_EL0 can be replaced with
+    // a MOVZ/MOVK sequence or an LDR literal.  For simplicity we use a
+    // static buffer — the address is the same for all modules in this
+    // process.
+    static uint8_t g_fake_current[16384] __attribute__((aligned(4096))) = {};
+
+    for (uint16_t i = 0; i < shnum; i++) {
+      if (!(shdrs[i].sh_flags & SHF_EXECINSTR)) continue;
+      if (!sections[i].base) continue;
+      auto* code = reinterpret_cast<uint32_t*>(sections[i].base);
+      size_t count = shdrs[i].sh_size / 4;
+      for (size_t j = 0; j < count; j++) {
+        uint32_t insn = code[j];
+
+        // MSR <sysreg>, Xt: encoding 1101 0101 0001 .... .... .... .... ....
+        // MRS Xt, <sysreg>: encoding 1101 0101 0011 .... .... .... .... ....
+        // Both: top 10 bits = 1101010100, bit 21 = direction (1=MRS, 0=MSR)
+        if ((insn & 0xFFF00000u) != 0xD5100000u &&
+            (insn & 0xFFF00000u) != 0xD5300000u) {
+          // Also catch MSR DAIFSet/DAIFClr: D503 41df / D503 42df patterns
+          // MSR DAIFSet, #imm: 1101 0101 0000 0011 0100 xxxx 1101 1111
+          // MSR DAIFClr, #imm: 1101 0101 0000 0011 0100 xxxx 0111 1111
+          if ((insn & 0xFFFFF0DFu) == 0xD50340DFu) {  // DAIFClr
+            code[j] = kNop;
+            priv_patched++;
+          }
+          continue;
+        }
+
+        // Extract the system register encoding (op0:op1:CRn:CRm:op2)
+        // from bits [20:19] (op0-2), [18:16] (op1), [15:12] (CRn),
+        // [11:8] (CRm), [7:5] (op2).
+        uint32_t sysreg = (insn >> 5) & 0x7FFF;  // bits [19:5]
+        bool is_mrs = (insn & (1u << 21)) != 0;
+        uint32_t rt = insn & 0x1F;  // target/source register
+
+        // TTBR0_EL1 = S3_0_C2_C0_0 → sysreg=0x4100 (op0=3,op1=0,CRn=2,CRm=0,op2=0)
+        // TTBR1_EL1 = S3_0_C2_C0_1 → sysreg=0x4101
+        // DAIF      = S3_3_C4_C2_1 → sysreg=0x6A21
+        // SP_EL0    = S3_0_C4_C1_0 → sysreg=0x4208
+        // SCTLR_EL1 = S3_0_C1_C0_0 → sysreg=0x4000
+        // TCR_EL1   = S3_0_C2_C0_2 → sysreg=0x4102
+        // VBAR_EL1  = S3_0_C12_C0_0 → sysreg=0x6000
+
+        // Compute sysreg field from instruction.
+        // MSR/MRS encoding: 1101 0101 00L1 op0[1] op1[2:0] CRn[3:0] CRm[3:0] op2[2:0] Rt[4:0]
+        // op0 is encoded as (op0 - 2) in bit 19.
+        // sysreg_id = op0_1:op1:CRn:CRm:op2
+
+        switch (sysreg) {
+          case 0x4100:  // TTBR0_EL1
+          case 0x4101:  // TTBR1_EL1
+          case 0x4102:  // TCR_EL1
+          case 0x4000:  // SCTLR_EL1
+          case 0x6000:  // VBAR_EL1
+            if (is_mrs) {
+              // MRS Xn, sysreg → MOV Xn, XZR (zeroes the register)
+              code[j] = 0xAA1F03E0u | rt;  // MOV Xn, XZR
+            } else {
+              // MSR sysreg, Xn → NOP
+              code[j] = kNop;
+            }
+            priv_patched++;
+            break;
+
+          case 0x6A21:  // DAIF
+            if (is_mrs) {
+              // MRS Xn, DAIF → MOV Xn, #0
+              code[j] = 0xAA1F03E0u | rt;
+            } else {
+              // MSR DAIF, Xn → NOP
+              code[j] = kNop;
+            }
+            priv_patched++;
+            break;
+
+          case 0x4208: {  // SP_EL0 — kernel 'current' task pointer
+            if (is_mrs) {
+              // MRS Xn, SP_EL0 → load address of g_fake_current into Xn.
+              // Use MOVZ/MOVK sequence (4 instructions for 64-bit addr).
+              // If we have room for 3 more instructions, emit full sequence.
+              // Otherwise, just MOV Xn, #0.
+              uint64_t addr = reinterpret_cast<uint64_t>(g_fake_current);
+              if (j + 3 < count) {
+                // MOVZ Xn, #lo16
+                code[j]   = 0xD2800000u | rt |
+                             ((uint32_t)(addr & 0xFFFF) << 5);
+                // MOVK Xn, #hi16, LSL #16
+                code[j+1] = 0xF2A00000u | rt |
+                             ((uint32_t)((addr >> 16) & 0xFFFF) << 5);
+                // MOVK Xn, #hi32, LSL #32
+                code[j+2] = 0xF2C00000u | rt |
+                             ((uint32_t)((addr >> 32) & 0xFFFF) << 5);
+                // MOVK Xn, #hi48, LSL #48
+                code[j+3] = 0xF2E00000u | rt |
+                             ((uint32_t)((addr >> 48) & 0xFFFF) << 5);
+                j += 3;  // Skip the 3 extra instructions we just wrote.
+              } else {
+                code[j] = 0xAA1F03E0u | rt;  // MOV Xn, XZR
+              }
+            } else {
+              code[j] = kNop;
+            }
+            priv_patched++;
+            break;
+          }
+
+          default:
+            // Unknown system register — NOP for safety to avoid SIGILL.
+            // MRS gets zero, MSR is ignored.
+            if (is_mrs) {
+              code[j] = 0xAA1F03E0u | rt;  // MOV Xn, XZR
+            } else {
+              code[j] = kNop;
+            }
+            priv_patched++;
+            break;
+        }
+      }
+    }
+    if (priv_patched > 0) {
+      fprintf(stderr,
+              "driverhub: %.*s: patched %zu privileged instructions\n",
+              (int)name.size(), name.data(), priv_patched);
+    }
+  }
+#endif  // __aarch64__
+
   // Run constructors from .init_array / .ctors sections.
   // EXPORT_SYMBOL uses __attribute__((constructor)) which places function
   // pointers in .init_array.  These must run before init_module so that

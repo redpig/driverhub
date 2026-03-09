@@ -163,6 +163,71 @@ zx_status_t BusDriver::LoadModulesFromDirectory(const std::string& dir_path) {
   return failures > 0 ? -1 : 0;
 }
 
+zx_status_t BusDriver::LoadModulesFromFiles(
+    const std::vector<std::string>& paths) {
+  // Step 1: Read all module files and extract modinfo.
+  struct ModuleFile {
+    std::string name;
+    std::vector<uint8_t> data;
+  };
+  std::vector<ModuleFile> files;
+  std::vector<std::pair<std::string, ModuleInfo>> module_infos;
+
+  for (const auto& path : paths) {
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file.is_open()) {
+      fprintf(stderr, "driverhub: cannot open %s\n", path.c_str());
+      continue;
+    }
+    size_t size = file.tellg();
+    file.seekg(0);
+    std::vector<uint8_t> data(size);
+    file.read(reinterpret_cast<char*>(data.data()), size);
+
+    // Derive module name from filename.
+    std::string name = path;
+    auto slash = name.rfind('/');
+    if (slash != std::string::npos) name = name.substr(slash + 1);
+    if (name.size() > 3 && name.substr(name.size() - 3) == ".ko")
+      name = name.substr(0, name.size() - 3);
+
+    ModuleInfo info;
+    info.name = name;
+    ExtractModuleInfo(data.data(), data.size(), &info);
+    module_infos.push_back({name, info});
+    files.push_back({name, std::move(data)});
+  }
+
+  // Step 2: Topologically sort by dependencies.
+  std::vector<size_t> load_order;
+  if (!TopologicalSortModules(module_infos, &load_order)) {
+    fprintf(stderr, "driverhub: dependency cycle detected, loading in "
+                    "original order\n");
+    load_order.clear();
+    for (size_t i = 0; i < files.size(); i++) load_order.push_back(i);
+  }
+
+  fprintf(stderr, "driverhub: load order determined for %zu modules\n",
+          load_order.size());
+
+  // Step 3: Load modules in dependency order.
+  int failures = 0;
+  for (size_t idx : load_order) {
+    const auto& mf = files[idx];
+    fprintf(stderr, "\n--- Loading %s ---\n", mf.name.c_str());
+    zx_status_t status = LoadModule(mf.name, mf.data.data(), mf.data.size());
+    if (status != 0) {
+      fprintf(stderr, "driverhub: failed to load %s (continuing)\n",
+              mf.name.c_str());
+      failures++;
+    }
+  }
+
+  fprintf(stderr, "driverhub: loaded %zu/%zu modules (%d failures)\n",
+          load_order.size() - failures, load_order.size(), failures);
+  return failures > 0 ? -1 : 0;
+}
+
 zx_status_t BusDriver::CreateModuleNode(
     std::unique_ptr<LoadedModule> module) {
   auto node = std::make_unique<ModuleNode>(std::move(module));

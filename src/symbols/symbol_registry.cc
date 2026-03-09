@@ -402,6 +402,7 @@ int bio_chain(void);
 int bio_end_io_acct_remapped(void);
 int bio_init(void);
 int bio_start_io_acct(void);
+// bcmp is provided by libc — no declaration needed.
 int bit_wait(void);
 int bit_wait_timeout(void);
 int blk_execute_rq(void);
@@ -1005,7 +1006,7 @@ int pps_register_source(void);
 int pps_unregister_source(void);
 int proc_create_net_data(void);
 int proc_create_net_single(void);
-int proc_create_seq_private(void);
+void* proc_create_seq_private(void);
 int proc_dointvec_jiffies(void);
 int proc_dointvec_minmax(void);
 int proc_doulongvec_minmax(void);
@@ -2534,6 +2535,8 @@ void SymbolRegistry::RegisterKmiSymbols() {
   REGISTER_SYMBOL(bio_chain);
   REGISTER_SYMBOL(bio_init);
   REGISTER_SYMBOL(bio_start_io_acct);
+  Register("bcmp", reinterpret_cast<void*>(
+      reinterpret_cast<uintptr_t>(&bcmp)));
   REGISTER_SYMBOL(bit_wait);
   REGISTER_SYMBOL(bit_wait_timeout);
   REGISTER_SYMBOL(blk_execute_rq);

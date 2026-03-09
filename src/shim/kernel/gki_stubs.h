@@ -1276,7 +1276,7 @@ void usbnet_get_link_ksettings_mii(void);
 void usbnet_set_link_ksettings_mii(void);
 void phy_ethtool_get_link_ksettings(void);
 void phy_ethtool_set_link_ksettings(void);
-void proc_create_seq_private(void);
+void* proc_create_seq_private(void);
 void crypto_shash_tfm_digest(void);
 void firmware_request_nowarn(void);
 void __kmalloc_node_track_caller(void);

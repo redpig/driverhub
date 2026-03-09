@@ -49,54 +49,82 @@ struct ExecContext {
 };
 
 // Exception watcher thread function.
+// Loops to handle multiple exceptions (e.g. many privileged MRS/MSR
+// instructions that need emulation) until the channel is closed.
 int ExceptionWatcherThread(void* arg) {
   zx_handle_t channel = static_cast<zx_handle_t>(reinterpret_cast<uintptr_t>(arg));
 
-  // Wait for an exception or channel close.
-  zx_wait_item_t items[1] = {{channel, ZX_CHANNEL_READABLE | ZX_CHANNEL_PEER_CLOSED, 0}};
-  zx_status_t status = zx_object_wait_many(items, 1, ZX_TIME_INFINITE);
-  if (status != ZX_OK || !(items[0].pending & ZX_CHANNEL_READABLE)) {
-    return 0;  // Channel closed (no exception).
-  }
-
-  // Read the exception.
-  zx_exception_info_t info;
-  zx_handle_t exception;
-  uint32_t actual_bytes, actual_handles;
-  status = zx_channel_read(channel, 0, &info, &exception,
-                            sizeof(info), 1, &actual_bytes, &actual_handles);
-  if (status != ZX_OK) return 0;
-
-  // Get the faulting thread and its registers.
-  zx_handle_t thread;
-  status = zx_exception_get_thread(exception, &thread);
-  if (status == ZX_OK) {
-    zx_thread_state_general_regs_t regs;
-    status = zx_thread_read_state(thread, ZX_THREAD_STATE_GENERAL_REGS,
-                                   &regs, sizeof(regs));
-    if (status == ZX_OK) {
-      fprintf(stderr,
-              "[module_executor] FAULT in module code!\n"
-              "  PC:  0x%016lx\n"
-              "  LR:  0x%016lx\n"
-              "  SP:  0x%016lx\n",
-              (unsigned long)regs.pc,
-              (unsigned long)regs.lr,
-              (unsigned long)regs.sp);
-
-      // Recover: set x0 = MODULE_EXEC_FAULT, PC = LR (return to caller).
-      regs.r[0] = static_cast<uint64_t>(static_cast<int64_t>(MODULE_EXEC_FAULT));
-      regs.pc = regs.lr;
-      zx_thread_write_state(thread, ZX_THREAD_STATE_GENERAL_REGS,
-                             &regs, sizeof(regs));
+  for (;;) {
+    // Wait for an exception or channel close.
+    zx_wait_item_t items[1] = {{channel, ZX_CHANNEL_READABLE | ZX_CHANNEL_PEER_CLOSED, 0}};
+    zx_status_t status = zx_object_wait_many(items, 1, ZX_TIME_INFINITE);
+    if (status != ZX_OK || !(items[0].pending & ZX_CHANNEL_READABLE)) {
+      break;  // Channel closed (module finished or no more exceptions).
     }
-    zx_handle_close(thread);
-  }
 
-  // Mark exception as handled and resume.
-  uint32_t state = ZX_EXCEPTION_STATE_HANDLED;
-  zx_object_set_property(exception, ZX_PROP_EXCEPTION_STATE, &state, sizeof(state));
-  zx_handle_close(exception);
+    // Read the exception.
+    zx_exception_info_t info;
+    zx_handle_t exception;
+    uint32_t actual_bytes, actual_handles;
+    status = zx_channel_read(channel, 0, &info, &exception,
+                              sizeof(info), 1, &actual_bytes, &actual_handles);
+    if (status != ZX_OK) break;
+
+    // Get the faulting thread and its registers.
+    zx_handle_t thread;
+    status = zx_exception_get_thread(exception, &thread);
+    if (status == ZX_OK) {
+      zx_thread_state_general_regs_t regs;
+      status = zx_thread_read_state(thread, ZX_THREAD_STATE_GENERAL_REGS,
+                                     &regs, sizeof(regs));
+      if (status == ZX_OK) {
+        // Try to emulate privileged ARM64 instructions before giving up.
+        bool emulated = false;
+#if defined(__aarch64__)
+        uint32_t insn = 0;
+        memcpy(&insn, reinterpret_cast<const void*>(regs.pc), 4);
+
+        bool is_msr = (insn & 0xFFF00000u) == 0xD5100000u;
+        bool is_mrs = (insn & 0xFFF00000u) == 0xD5300000u;
+        bool is_daif_imm = (insn & 0xFFFFF0DFu) == 0xD50340DFu;
+
+        if (is_msr || is_mrs || is_daif_imm) {
+          uint32_t rt = insn & 0x1F;
+          if (is_mrs && rt < 30) {
+            regs.r[rt] = 0;
+          }
+          regs.pc += 4;
+          zx_thread_write_state(thread, ZX_THREAD_STATE_GENERAL_REGS,
+                                 &regs, sizeof(regs));
+          emulated = true;
+        }
+#endif
+
+        if (!emulated) {
+          fprintf(stderr,
+                  "[module_executor] FAULT in module code!\n"
+                  "  PC:  0x%016lx\n"
+                  "  LR:  0x%016lx\n"
+                  "  SP:  0x%016lx\n",
+                  (unsigned long)regs.pc,
+                  (unsigned long)regs.lr,
+                  (unsigned long)regs.sp);
+
+          // Recover: set x0 = MODULE_EXEC_FAULT, PC = LR.
+          regs.r[0] = static_cast<uint64_t>(static_cast<int64_t>(MODULE_EXEC_FAULT));
+          regs.pc = regs.lr;
+          zx_thread_write_state(thread, ZX_THREAD_STATE_GENERAL_REGS,
+                                 &regs, sizeof(regs));
+        }
+      }
+      zx_handle_close(thread);
+    }
+
+    // Mark exception as handled and resume.
+    uint32_t state = ZX_EXCEPTION_STATE_HANDLED;
+    zx_object_set_property(exception, ZX_PROP_EXCEPTION_STATE, &state, sizeof(state));
+    zx_handle_close(exception);
+  }
 
   return 0;
 }
@@ -173,6 +201,29 @@ void FaultSignalHandler(int sig, siginfo_t* info, void* ucontext) {
     raise(sig);
     return;
   }
+
+#if defined(__aarch64__) && !defined(__APPLE__)
+  // Try to emulate privileged ARM64 instructions (MRS/MSR to EL1 regs).
+  // This handles any instructions that weren't caught by static patching.
+  if (sig == SIGILL) {
+    auto* uc = static_cast<ucontext_t*>(ucontext);
+    uint32_t insn = 0;
+    memcpy(&insn, reinterpret_cast<const void*>(uc->uc_mcontext.pc), 4);
+
+    bool is_msr = (insn & 0xFFF00000u) == 0xD5100000u;
+    bool is_mrs = (insn & 0xFFF00000u) == 0xD5300000u;
+    bool is_daif_imm = (insn & 0xFFFFF0DFu) == 0xD50340DFu;
+
+    if (is_msr || is_mrs || is_daif_imm) {
+      uint32_t rt = insn & 0x1F;
+      if (is_mrs && rt < 30) {
+        uc->uc_mcontext.regs[rt] = 0;
+      }
+      uc->uc_mcontext.pc += 4;
+      return;  // Resume execution at next instruction.
+    }
+  }
+#endif
 
   const char* sig_name = "UNKNOWN";
   if (sig == SIGSEGV) sig_name = "SIGSEGV";
