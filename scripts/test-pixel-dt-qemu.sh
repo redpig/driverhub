@@ -71,13 +71,28 @@ mkdir -p "$OBJDIR"
 
 CXXFLAGS="--target=$TARGET_TRIPLE --sysroot=$SYSROOT \
   -ffuchsia-api-level=30 -std=c++17 -Wall -g \
-  -I. -Isrc/shim/include -fno-pie -fPIC -D__Fuchsia__ $IDK_INCS"
+  -I. -Isrc/shim/include -Irust/driverhub-core/include -fno-pie -fPIC -D__Fuchsia__ $IDK_INCS"
+
+# Build Rust core library
+echo "=== Building Rust core library for $TARGET_TRIPLE ==="
+RUST_TARGET_DIR=rust/driverhub-core/target/$TARGET_TRIPLE/release
+RUST_LIB=$RUST_TARGET_DIR/libdriverhub_core.a
+
+(cd rust/driverhub-core && cargo build --release --target "$TARGET_TRIPLE" 2>&1)
+
+if [ ! -f "$RUST_LIB" ]; then
+  echo "ERROR: Rust library not found at $RUST_LIB"
+  exit 1
+fi
+echo "  Built: $RUST_LIB ($(du -h "$RUST_LIB" | cut -f1))"
+echo ""
 
 SOURCES=(
   src/main.cc
   src/bus_driver/bus_driver.cc
   src/module_node/module_node.cc
   src/loader/module_loader.cc
+  src/loader/module_executor.cc
   src/loader/dependency_sort.cc
   src/loader/memory_allocator.cc
   src/loader/mmap_allocator.cc
@@ -149,7 +164,7 @@ echo ""
 echo "=== Linking ==="
 $CLANG --target="$TARGET_TRIPLE" --sysroot="$SYSROOT" -ffuchsia-api-level=30 \
   -L"$CLANG_RTLIB" -L"$IDK_LIBS" -L"$SYSROOT/lib" \
-  -o "$OUTPUT_BIN" "$OBJDIR"/*.o \
+  -o "$OUTPUT_BIN" "$OBJDIR"/*.o "$RUST_LIB" \
   -lc++ -lc++abi -lunwind -lfdio -lzircon -lpthread 2>&1
 echo "  Linked: $OUTPUT_BIN"
 
