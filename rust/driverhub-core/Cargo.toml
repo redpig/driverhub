@@ -1,0 +1,20 @@
+[package]
+name = "driverhub-core"
+version = "0.1.0"
+edition = "2021"
+description = "DriverHub core: ELF loader, modinfo parser, dependency sort, DT parser, symbol registry"
+license = "BSD-3-Clause"
+
+[lib]
+name = "driverhub_core"
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+libc = "0.2"
+
+[features]
+default = []
+# Enable FFI exports for linking into C++ binary.
+ffi = []
+
+[dev-dependencies]
