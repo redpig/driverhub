@@ -132,42 +132,67 @@ int FopsExceptionWatcher(void* arg) {
       status = zx_thread_read_state(thread, ZX_THREAD_STATE_GENERAL_REGS,
                                      &regs, sizeof(regs));
       if (status == ZX_OK) {
-        g_fault_count++;
-        fprintf(stderr,
-                "[rfkill-qemu] FAULT #%d in module fops!\n"
-                "  PC:  0x%016lx\n"
-                "  LR:  0x%016lx\n"
-                "  SP:  0x%016lx\n"
-                "  X0:  0x%016lx  X1: 0x%016lx\n"
-                "  X2:  0x%016lx  X3: 0x%016lx\n",
-                g_fault_count.load(),
-                (unsigned long)regs.pc,
-                (unsigned long)regs.lr,
-                (unsigned long)regs.sp,
-                (unsigned long)regs.r[0],
-                (unsigned long)regs.r[1],
-                (unsigned long)regs.r[2],
-                (unsigned long)regs.r[3]);
-
         // Read the faulting instruction.
         uint32_t fault_insn = 0;
         size_t actual;
         zx_status_t rd = zx_process_read_memory(
             zx_process_self(), regs.pc, &fault_insn, 4, &actual);
+
+        // Try to emulate privileged ARM64 instructions (MRS/MSR)
+        // before treating as a fatal fault.  GKI module code
+        // frequently reads system registers (e.g. TPIDR_EL1,
+        // VBAR_EL1) which trap in userspace on QEMU.
+        bool emulated = false;
         if (rd == ZX_OK) {
-          fprintf(stderr, "  Insn: 0x%08x", fault_insn);
-          if (fault_insn == 0xd4200000) fprintf(stderr, " (brk #0 / BUG)");
-          else if ((fault_insn & 0xFFE0001F) == 0xd4200000)
-            fprintf(stderr, " (brk #%u)",
-                    (fault_insn >> 5) & 0xFFFF);
-          fprintf(stderr, "\n");
+          bool is_msr = (fault_insn & 0xFFF00000u) == 0xD5100000u;
+          bool is_mrs = (fault_insn & 0xFFF00000u) == 0xD5300000u;
+          bool is_daif_imm = (fault_insn & 0xFFFFF0DFu) == 0xD50340DFu;
+
+          if (is_msr || is_mrs || is_daif_imm) {
+            uint32_t rt = fault_insn & 0x1F;
+            if (is_mrs && rt < 30) {
+              regs.r[rt] = 0;
+            }
+            regs.pc += 4;
+            zx_thread_write_state(thread, ZX_THREAD_STATE_GENERAL_REGS,
+                                   &regs, sizeof(regs));
+            emulated = true;
+          }
         }
 
-        // Recover: return -EFAULT from the faulting function.
-        regs.r[0] = static_cast<uint64_t>(static_cast<int64_t>(-14));  // -EFAULT
-        regs.pc = regs.lr;
-        zx_thread_write_state(thread, ZX_THREAD_STATE_GENERAL_REGS,
-                               &regs, sizeof(regs));
+        if (!emulated) {
+          g_fault_count++;
+          fprintf(stderr,
+                  "[rfkill-qemu] FAULT #%d in module fops!\n"
+                  "  PC:  0x%016lx\n"
+                  "  LR:  0x%016lx\n"
+                  "  SP:  0x%016lx\n"
+                  "  X0:  0x%016lx  X1: 0x%016lx\n"
+                  "  X2:  0x%016lx  X3: 0x%016lx\n",
+                  g_fault_count.load(),
+                  (unsigned long)regs.pc,
+                  (unsigned long)regs.lr,
+                  (unsigned long)regs.sp,
+                  (unsigned long)regs.r[0],
+                  (unsigned long)regs.r[1],
+                  (unsigned long)regs.r[2],
+                  (unsigned long)regs.r[3]);
+
+          if (rd == ZX_OK) {
+            fprintf(stderr, "  Insn: 0x%08x", fault_insn);
+            if (fault_insn == 0xd4200000) fprintf(stderr, " (brk #0 / BUG)");
+            else if ((fault_insn & 0xFFE0001F) == 0xd4200000)
+              fprintf(stderr, " (brk #%u)",
+                      (fault_insn >> 5) & 0xFFFF);
+            fprintf(stderr, "\n");
+          }
+
+          // Recover: return -EFAULT from the faulting function.
+          regs.r[0] = static_cast<uint64_t>(static_cast<int64_t>(-14));  // -EFAULT
+          regs.pc = regs.lr;
+          zx_thread_write_state(thread, ZX_THREAD_STATE_GENERAL_REGS,
+                                 &regs, sizeof(regs));
+        }
       }
       zx_handle_close(thread);
     }
@@ -331,6 +356,13 @@ int main(int argc, char** argv) {
   fprintf(stderr,
           "\n--- Phase 3: Register Radios via Module Exports ---\n");
 
+  // Set up exception protection for all module code execution (Phases 3-5).
+  // GKI module code may contain privileged ARM64 instructions (MRS/MSR)
+  // that must be emulated.  The guard covers rfkill_alloc/register (Phase 3),
+  // fops calls (Phase 4), and rfkill_unregister/destroy (Phase 5 cleanup).
+  FopsGuard fops_guard;
+  fops_guard.Start();
+
   // Cast module exports to Linux function signatures.
   // rfkill_alloc(name, parent, type, ops, ops_data) -> struct rfkill*
   using rfkill_alloc_fn_t = void*(*)(const char*, void*, int,
@@ -394,10 +426,6 @@ int main(int argc, char** argv) {
   // -----------------------------------------------------------------------
   fprintf(stderr,
           "\n--- Phase 4: DevFs Path (fuchsia.driverhub.Vfs server-side) ---\n");
-
-  // Set up exception protection for module fops calls.
-  FopsGuard fops_guard;
-  fops_guard.Start();
 
   // Verify /dev/rfkill is in the DevFs tree (created by misc_register
   // during init_module).
@@ -501,8 +529,6 @@ int main(int argc, char** argv) {
             devfs_close_ok ? "OK" : "FAILED");
   }
 
-  fops_guard.Stop();
-
   // Verify DevFs List (Vfs.List equivalent).
   auto dev_nodes = devfs.ListDevices();
   bool devfs_list_ok = false;
@@ -527,6 +553,10 @@ int main(int argc, char** argv) {
     if (nfc_rf) { mod_rfkill_unregister(nfc_rf); mod_rfkill_destroy(nfc_rf); }
     fprintf(stderr, "[rfkill-qemu] Radios unregistered + destroyed (module code)\n");
   }
+
+  // Stop the exception guard before SafeCallExit, which creates its own
+  // process-wide exception channel (only one can be active at a time).
+  fops_guard.Stop();
 
   bool exit_ok = false;
   if (init_ok && has_exit) {
