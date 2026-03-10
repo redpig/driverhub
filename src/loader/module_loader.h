@@ -9,10 +9,9 @@
 #include <memory>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <vector>
 
-#include "src/loader/memory_allocator.h"
+#include "driverhub_core.h"
 
 namespace driverhub {
 
@@ -29,6 +28,7 @@ struct ModuleInfo {
 };
 
 // Represents a loaded .ko module in memory.
+// Wraps a Rust DhLoadedModule via FFI.
 struct LoadedModule {
   std::string name;
   ModuleInfo info;
@@ -37,32 +37,27 @@ struct LoadedModule {
   int (*init_fn)() = nullptr;
   void (*exit_fn)() = nullptr;
 
-  // Global symbols exported by this module (GLOBAL FUNC/OBJECT).
-  // Populated during Load() so callers (and other modules) can call
-  // into this module's exported API.
-  std::unordered_map<std::string, void*> exports;
+  // Opaque Rust handle — freed on destruction.
+  DhLoadedModule* rust_handle = nullptr;
 
-  // Look up an exported symbol by name. Returns nullptr if not found.
-  void* Resolve(const char* name) const {
-    auto it = exports.find(name);
-    return it != exports.end() ? it->second : nullptr;
-  }
+  ~LoadedModule();
 
-  // Owned memory allocation backing the loaded module sections.
-  // Automatically released when the LoadedModule is destroyed.
-  std::unique_ptr<MemoryAllocation> allocation;
+  // Non-copyable.
+  LoadedModule() = default;
+  LoadedModule(const LoadedModule&) = delete;
+  LoadedModule& operator=(const LoadedModule&) = delete;
+  LoadedModule(LoadedModule&& other) noexcept;
+  LoadedModule& operator=(LoadedModule&& other) noexcept;
 };
 
 class SymbolRegistry;
 
-// Loads Linux GKI .ko modules (ELF ET_REL) via elfldltl and resolves their
-// symbols against the KMI shim library and intermodule symbol registry.
+// Loads Linux GKI .ko modules (ELF ET_REL) via the Rust driverhub-core
+// library and resolves their symbols against the KMI shim registry.
 class ModuleLoader {
  public:
-  // Takes a symbol registry for resolving KMI symbols and a memory allocator
-  // for section memory. The allocator determines the backend: mmap on host,
-  // VMO on Fuchsia.
-  ModuleLoader(SymbolRegistry& symbols, MemoryAllocator& allocator);
+  // Takes a symbol registry for resolving KMI symbols.
+  explicit ModuleLoader(SymbolRegistry& symbols);
   ~ModuleLoader();
 
   // Load a .ko module from raw ELF bytes. Resolves symbols, applies
@@ -72,8 +67,7 @@ class ModuleLoader {
                                      const uint8_t* data, size_t size);
 
  private:
-  SymbolRegistry& symbols_;
-  MemoryAllocator& allocator_;
+  DhModuleLoader* rust_loader_;
 };
 
 }  // namespace driverhub

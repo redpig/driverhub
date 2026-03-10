@@ -14,37 +14,16 @@
 
 #include "src/fuchsia/module_enumerator.h"
 #include "src/loader/dependency_sort.h"
-#include "src/loader/memory_allocator.h"
 #include "src/loader/modinfo_parser.h"
 #include "src/module_node/module_node.h"
-
-// Platform-specific allocator selection.
-#if defined(__Fuchsia__)
-#include "src/fuchsia/vmo_module_loader.h"
-#else
-#include "src/loader/mmap_allocator.h"
-#endif
 
 namespace driverhub {
 
 // Forward declaration — drains EXPORT_SYMBOL calls from module.cc.
 std::unordered_map<std::string, void*> DrainPendingExports();
 
-namespace {
-
-std::unique_ptr<MemoryAllocator> CreatePlatformAllocator() {
-#if defined(__Fuchsia__)
-  return std::make_unique<VmoAllocator>();
-#else
-  return std::make_unique<MmapAllocator>();
-#endif
-}
-
-}  // namespace
-
 BusDriver::BusDriver()
-    : allocator_(CreatePlatformAllocator()),
-      loader_(symbols_, *allocator_) {}
+    : loader_(symbols_) {}
 
 BusDriver::~BusDriver() {
   Shutdown();

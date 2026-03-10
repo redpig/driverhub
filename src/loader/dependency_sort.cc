@@ -5,9 +5,9 @@
 #include "src/loader/dependency_sort.h"
 
 #include <cstdio>
-#include <queue>
-#include <unordered_map>
-#include <unordered_set>
+#include <vector>
+
+#include "driverhub_core.h"
 
 namespace driverhub {
 
@@ -16,59 +16,37 @@ bool TopologicalSortModules(
     std::vector<size_t>* sorted_indices) {
   sorted_indices->clear();
 
-  // Build name → index map.
-  std::unordered_map<std::string, size_t> name_to_idx;
-  for (size_t i = 0; i < modules.size(); i++) {
-    name_to_idx[modules[i].first] = i;
-  }
+  size_t count = modules.size();
+  if (count == 0) return true;
 
-  // Build adjacency list and in-degree count.
-  std::vector<std::vector<size_t>> dependents(modules.size());
-  std::vector<int> in_degree(modules.size(), 0);
+  // Build C arrays for the Rust FFI.
+  std::vector<const char*> names(count);
+  std::vector<std::vector<const char*>> dep_ptrs(count);
+  std::vector<const char* const*> depends_lists(count);
+  std::vector<size_t> depends_counts(count);
 
-  for (size_t i = 0; i < modules.size(); i++) {
+  for (size_t i = 0; i < count; i++) {
+    names[i] = modules[i].first.c_str();
+    dep_ptrs[i].reserve(modules[i].second.depends.size());
     for (const auto& dep : modules[i].second.depends) {
-      auto it = name_to_idx.find(dep);
-      if (it != name_to_idx.end()) {
-        // dep must be loaded before modules[i].
-        dependents[it->second].push_back(i);
-        in_degree[i]++;
-      } else {
-        // Dependency not in the set — it might already be loaded
-        // (e.g., a KMI symbol provider). Skip silently.
-        fprintf(stderr,
-                "driverhub: dependency '%s' of '%s' not in module set "
-                "(may already be loaded)\n",
-                dep.c_str(), modules[i].first.c_str());
-      }
+      dep_ptrs[i].push_back(dep.c_str());
     }
+    depends_lists[i] = dep_ptrs[i].empty() ? nullptr : dep_ptrs[i].data();
+    depends_counts[i] = dep_ptrs[i].size();
   }
 
-  // Kahn's algorithm: process nodes with in-degree 0.
-  std::queue<size_t> ready;
-  for (size_t i = 0; i < modules.size(); i++) {
-    if (in_degree[i] == 0) {
-      ready.push(i);
-    }
-  }
+  sorted_indices->resize(count);
 
-  while (!ready.empty()) {
-    size_t idx = ready.front();
-    ready.pop();
-    sorted_indices->push_back(idx);
+  bool ok = dh_topological_sort(
+      names.data(),
+      reinterpret_cast<const char* const* const*>(depends_lists.data()),
+      depends_counts.data(),
+      count,
+      sorted_indices->data());
 
-    for (size_t dep_idx : dependents[idx]) {
-      in_degree[dep_idx]--;
-      if (in_degree[dep_idx] == 0) {
-        ready.push(dep_idx);
-      }
-    }
-  }
-
-  if (sorted_indices->size() != modules.size()) {
-    fprintf(stderr, "driverhub: dependency cycle detected! "
-                    "Sorted %zu of %zu modules.\n",
-            sorted_indices->size(), modules.size());
+  if (!ok) {
+    fprintf(stderr, "driverhub: dependency cycle detected!\n");
+    sorted_indices->clear();
     return false;
   }
 

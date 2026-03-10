@@ -186,6 +186,18 @@ pub unsafe extern "C" fn dh_symbol_registry_size(reg: *const SymbolRegistry) -> 
     }
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn dh_symbol_registry_contains(
+    reg: *const SymbolRegistry,
+    name: *const c_char,
+) -> bool {
+    if reg.is_null() || name.is_null() {
+        return false;
+    }
+    let name = CStr::from_ptr(name).to_str().unwrap_or("");
+    (*reg).contains(name)
+}
+
 // ============================================================
 // Dependency Sort FFI
 // ============================================================

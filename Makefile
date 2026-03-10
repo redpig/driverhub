@@ -2,8 +2,12 @@
 # The real Fuchsia build uses BUILD.gn.
 
 CXX ?= g++
-CXXFLAGS := -std=c++17 -Wall -Wextra -Wpedantic -g -I. -Isrc/shim/include -fno-pie
+CXXFLAGS := -std=c++17 -Wall -Wextra -Wpedantic -g -I. -Isrc/shim/include -Irust/driverhub-core/include -fno-pie
 LDFLAGS := -no-pie
+
+# Rust core library (static archive built by Cargo).
+RUST_LIB := rust/driverhub-core/target/release/libdriverhub_core.a
+RUST_LINK_LIBS := -lpthread -ldl -lm
 
 # Core library sources (everything except main.cc).
 LIB_SRCS := \
@@ -145,9 +149,15 @@ MODINFO_TEST := tests/modinfo_parser_test
 SYMREG_TEST := tests/symbol_registry_test
 LOADER_TEST := tests/loader_test
 
-.PHONY: all clean test test-rtc test-rtc-cmos test-gki test-rtc-ops test-dt-rtc test-intermodule test-gpio test-gpio-ctrl test-dep-sort test-modinfo test-symreg test-loader test-all test-bootfs-gpio test-composite test-native-composite
+.PHONY: all clean test test-rtc test-rtc-cmos test-gki test-rtc-ops test-dt-rtc test-intermodule test-gpio test-gpio-ctrl test-dep-sort test-modinfo test-symreg test-loader test-all test-bootfs-gpio test-composite test-native-composite rust-lib
 
 all: $(TARGET) $(GKI_TARGET)
+
+# Build the Rust static library via Cargo.
+rust-lib: $(RUST_LIB)
+
+$(RUST_LIB):
+	cd rust/driverhub-core && cargo build --release
 
 test: $(TARGET) $(TEST_KO)
 	echo | ./$(TARGET) $(TEST_KO)
@@ -222,14 +232,14 @@ $(GPIO_CTRL_KO): tests/gpio_controller_module.c
 $(TS_COMPOSITE_KO): tests/touchscreen_composite_module.c
 	$(CC) -c -o $@ $< $(SHIM_INCLUDES) -fno-stack-protector -fno-pie
 
-$(BOOTFS_GPIO_DEMO): src/fuchsia/bootfs_gpio_demo.cc $(LIB_OBJS)
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ -lpthread
+$(BOOTFS_GPIO_DEMO): src/fuchsia/bootfs_gpio_demo.cc $(LIB_OBJS) $(RUST_LIB)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(RUST_LINK_LIBS)
 
-$(COMPOSITE_DEMO): src/fuchsia/composite_demo.cc $(LIB_OBJS)
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ -lpthread
+$(COMPOSITE_DEMO): src/fuchsia/composite_demo.cc $(LIB_OBJS) $(RUST_LIB)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(RUST_LINK_LIBS)
 
-$(NATIVE_COMPOSITE_DEMO): src/fuchsia/native_composite_demo.cc $(LIB_OBJS)
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ -lpthread
+$(NATIVE_COMPOSITE_DEMO): src/fuchsia/native_composite_demo.cc $(LIB_OBJS) $(RUST_LIB)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(RUST_LINK_LIBS)
 
 $(DATA_EXPORT_KO): tests/data_export_module.c
 	$(CC) -c -o $@ $< $(SHIM_INCLUDES) -fno-stack-protector -fno-pie
@@ -242,31 +252,31 @@ $(RTC_CMOS_KO): tests/rtc_cmos_module.c
 
 # Test binaries: compile test .cc without -Isrc/shim/include to avoid
 # Linux kernel type conflicts with gtest's system header includes.
-TEST_CXXFLAGS := -std=c++17 -Wall -Wextra -Wpedantic -g -I. -fno-pie
+TEST_CXXFLAGS := -std=c++17 -Wall -Wextra -Wpedantic -g -I. -Irust/driverhub-core/include -fno-pie
 
-$(DEP_SORT_TEST): tests/dependency_sort_test.cc src/loader/dependency_sort.o
-	$(CXX) $(TEST_CXXFLAGS) $(LDFLAGS) -o $@ $^ -lgtest -lgtest_main -lpthread
+$(DEP_SORT_TEST): tests/dependency_sort_test.cc src/loader/dependency_sort.o $(RUST_LIB)
+	$(CXX) $(TEST_CXXFLAGS) $(LDFLAGS) -o $@ $^ -lgtest -lgtest_main $(RUST_LINK_LIBS)
 
-$(MODINFO_TEST): tests/modinfo_parser_test.cc src/loader/modinfo_parser.o
-	$(CXX) $(TEST_CXXFLAGS) $(LDFLAGS) -o $@ $^ -lgtest -lgtest_main -lpthread
+$(MODINFO_TEST): tests/modinfo_parser_test.cc src/loader/modinfo_parser.o $(RUST_LIB)
+	$(CXX) $(TEST_CXXFLAGS) $(LDFLAGS) -o $@ $^ -lgtest -lgtest_main $(RUST_LINK_LIBS)
 
-$(RTC_OPS_TEST): tests/rtc_ops_test.cc $(LIB_OBJS)
-	$(CXX) $(TEST_CXXFLAGS) $(LDFLAGS) -o $@ $^ -lgtest -lpthread
+$(RTC_OPS_TEST): tests/rtc_ops_test.cc $(LIB_OBJS) $(RUST_LIB)
+	$(CXX) $(TEST_CXXFLAGS) $(LDFLAGS) -o $@ $^ -lgtest $(RUST_LINK_LIBS)
 
-$(DT_RTC_TEST): tests/dt_rtc_test.cc $(LIB_OBJS)
-	$(CXX) $(TEST_CXXFLAGS) $(LDFLAGS) -o $@ $^ -lgtest -lpthread
+$(DT_RTC_TEST): tests/dt_rtc_test.cc $(LIB_OBJS) $(RUST_LIB)
+	$(CXX) $(TEST_CXXFLAGS) $(LDFLAGS) -o $@ $^ -lgtest $(RUST_LINK_LIBS)
 
-$(SYMREG_TEST): tests/symbol_registry_test.cc $(LIB_OBJS)
-	$(CXX) $(TEST_CXXFLAGS) $(LDFLAGS) -o $@ $^ -lgtest -lgtest_main -lpthread
+$(SYMREG_TEST): tests/symbol_registry_test.cc $(LIB_OBJS) $(RUST_LIB)
+	$(CXX) $(TEST_CXXFLAGS) $(LDFLAGS) -o $@ $^ -lgtest -lgtest_main $(RUST_LINK_LIBS)
 
-$(LOADER_TEST): tests/loader_test.cc $(LIB_OBJS)
-	$(CXX) $(TEST_CXXFLAGS) $(LDFLAGS) -o $@ $^ -lgtest -lgtest_main -lpthread
+$(LOADER_TEST): tests/loader_test.cc $(LIB_OBJS) $(RUST_LIB)
+	$(CXX) $(TEST_CXXFLAGS) $(LDFLAGS) -o $@ $^ -lgtest -lgtest_main $(RUST_LINK_LIBS)
 
-$(TARGET): $(OBJS)
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ -lpthread
+$(TARGET): $(OBJS) $(RUST_LIB)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(RUST_LINK_LIBS)
 
-$(GKI_TARGET): $(GKI_OBJS)
-	$(CXX) $(GKI_CXXFLAGS) $(LDFLAGS) -o $@ $^ -lpthread
+$(GKI_TARGET): $(GKI_OBJS) $(RUST_LIB)
+	$(CXX) $(GKI_CXXFLAGS) $(LDFLAGS) -o $@ $^ $(RUST_LINK_LIBS)
 
 %.o: %.cc
 	$(CXX) $(CXXFLAGS) -c -o $@ $<

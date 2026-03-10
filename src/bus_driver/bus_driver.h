@@ -9,7 +9,6 @@
 #include <string>
 #include <vector>
 
-#include "src/loader/memory_allocator.h"
 #include "src/loader/module_loader.h"
 #include "src/shim/kernel/types.h"
 #include "src/symbols/symbol_registry.h"
@@ -56,7 +55,6 @@ class BusDriver {
   zx_status_t CreateModuleNode(std::unique_ptr<LoadedModule> module);
 
   SymbolRegistry symbols_;
-  std::unique_ptr<MemoryAllocator> allocator_;
   ModuleLoader loader_;
   std::vector<std::unique_ptr<ModuleNode>> nodes_;
 };

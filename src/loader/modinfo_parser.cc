@@ -5,12 +5,15 @@
 #include "src/loader/modinfo_parser.h"
 
 #include <cstring>
-#include <elf.h>
 #include <string>
+#include <string_view>
+
+#include "driverhub_core.h"
 
 namespace driverhub {
 
 void ParseModinfo(const uint8_t* data, size_t size, ModuleInfo* info) {
+  if (!data || size == 0) return;
   const char* p = reinterpret_cast<const char*>(data);
   const char* end = p + size;
 
@@ -57,48 +60,27 @@ void ParseModinfo(const uint8_t* data, size_t size, ModuleInfo* info) {
 }
 
 bool ExtractModuleInfo(const uint8_t* data, size_t size, ModuleInfo* info) {
-  if (size < sizeof(Elf64_Ehdr)) {
+  DhModuleInfo dh_info = {};
+  if (!dh_extract_module_info(data, size, &dh_info)) {
     return false;
   }
 
-  auto* ehdr = reinterpret_cast<const Elf64_Ehdr*>(data);
-
-  if (memcmp(ehdr->e_ident, ELFMAG, SELFMAG) != 0) {
-    return false;
+  if (dh_info.name) info->name = dh_info.name;
+  if (dh_info.description) info->description = dh_info.description;
+  if (dh_info.license) info->license = dh_info.license;
+  if (dh_info.vermagic) info->vermagic = dh_info.vermagic;
+  for (size_t i = 0; i < dh_info.depends_count; i++) {
+    if (dh_info.depends[i]) {
+      info->depends.push_back(dh_info.depends[i]);
+    }
   }
-
-  if (ehdr->e_type != ET_REL || ehdr->e_ident[EI_CLASS] != ELFCLASS64) {
-    return false;
-  }
-
-  if (ehdr->e_shoff == 0 || ehdr->e_shnum == 0) {
-    return false;
-  }
-
-  auto* shdrs = reinterpret_cast<const Elf64_Shdr*>(data + ehdr->e_shoff);
-  uint16_t shnum = ehdr->e_shnum;
-
-  // Section name string table.
-  const char* shstrtab = nullptr;
-  if (ehdr->e_shstrndx < shnum) {
-    shstrtab = reinterpret_cast<const char*>(
-        data + shdrs[ehdr->e_shstrndx].sh_offset);
-  }
-
-  if (!shstrtab) {
-    return false;
-  }
-
-  // Find .modinfo section and parse it.
-  for (uint16_t i = 0; i < shnum; i++) {
-    const char* sec_name = shstrtab + shdrs[i].sh_name;
-    if (strcmp(sec_name, ".modinfo") == 0 && shdrs[i].sh_type != SHT_NOBITS) {
-      ParseModinfo(data + shdrs[i].sh_offset, shdrs[i].sh_size, info);
-      return true;
+  for (size_t i = 0; i < dh_info.aliases_count; i++) {
+    if (dh_info.aliases[i]) {
+      info->aliases.push_back(dh_info.aliases[i]);
     }
   }
 
-  // No .modinfo section — still a valid .ko, just no metadata.
+  dh_module_info_free(&dh_info);
   return true;
 }
 

@@ -1558,23 +1558,32 @@ int zs_unmap_object(void);
 
 namespace driverhub {
 
-SymbolRegistry::SymbolRegistry() = default;
-SymbolRegistry::~SymbolRegistry() = default;
+SymbolRegistry::SymbolRegistry()
+    : handle_(dh_symbol_registry_new()) {}
+
+SymbolRegistry::~SymbolRegistry() {
+  if (handle_) {
+    dh_symbol_registry_free(handle_);
+  }
+}
 
 void SymbolRegistry::Register(const std::string& name, void* address) {
-  symbols_[name] = address;
+  dh_symbol_registry_register(handle_, name.c_str(), address);
 }
 
 void* SymbolRegistry::Resolve(std::string_view name) const {
-  auto it = symbols_.find(std::string(name));
-  if (it != symbols_.end()) {
-    return it->second;
-  }
-  return nullptr;
+  // dh_symbol_registry_resolve expects a null-terminated string.
+  std::string name_str(name);
+  return dh_symbol_registry_resolve(handle_, name_str.c_str());
 }
 
 bool SymbolRegistry::Contains(std::string_view name) const {
-  return symbols_.find(std::string(name)) != symbols_.end();
+  std::string name_str(name);
+  return dh_symbol_registry_contains(handle_, name_str.c_str());
+}
+
+size_t SymbolRegistry::size() const {
+  return dh_symbol_registry_size(handle_);
 }
 
 // Macro to reduce boilerplate when registering shim symbols.
@@ -3845,7 +3854,7 @@ void SymbolRegistry::RegisterKmiSymbols() {
   REGISTER_SYMBOL(zlib_deflate_workspacesize);
   REGISTER_SYMBOL(zlib_inflate_workspacesize);
 
-  fprintf(stderr, "driverhub: registered %zu KMI symbols\n", symbols_.size());
+  fprintf(stderr, "driverhub: registered %zu KMI symbols\n", size());
 }
 
 #undef REGISTER_SYMBOL

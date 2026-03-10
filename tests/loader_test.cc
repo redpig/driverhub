@@ -13,8 +13,6 @@
 
 #include <gtest/gtest.h>
 
-#include "src/loader/memory_allocator.h"
-#include "src/loader/mmap_allocator.h"
 #include "src/loader/module_loader.h"
 #include "src/symbols/symbol_registry.h"
 
@@ -51,7 +49,7 @@ class LoaderTest : public ::testing::Test {
       fprintf(stderr, "test: could not read %s\n", path.c_str());
       return nullptr;
     }
-    driverhub::ModuleLoader loader(registry_, allocator_);
+    driverhub::ModuleLoader loader(registry_);
     return loader.Load(path, data.data(), data.size());
   }
 
@@ -65,7 +63,6 @@ class LoaderTest : public ::testing::Test {
   }
 
   driverhub::SymbolRegistry registry_;
-  driverhub::MmapAllocator allocator_;
 };
 
 // ============================================================
@@ -79,8 +76,7 @@ TEST_F(LoaderTest, LoadTestModule) {
   }
 
   EXPECT_NE(mod->init_fn, nullptr);
-  EXPECT_NE(mod->allocation, nullptr);
-  EXPECT_GT(mod->allocation->size, 0u);
+  EXPECT_NE(mod->rust_handle, nullptr);
 }
 
 TEST_F(LoaderTest, InitModuleReturnsZero) {
@@ -219,7 +215,7 @@ TEST_F(LoaderTest, DataExportModule) {
 // ============================================================
 
 TEST_F(LoaderTest, InvalidElfRejected) {
-  driverhub::ModuleLoader loader(registry_, allocator_);
+  driverhub::ModuleLoader loader(registry_);
 
   // Empty data.
   EXPECT_EQ(loader.Load("empty", nullptr, 0), nullptr);

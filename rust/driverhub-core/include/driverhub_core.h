@@ -52,6 +52,8 @@ void dh_symbol_registry_register(DhSymbolRegistry* reg, const char* name,
 void* dh_symbol_registry_resolve(const DhSymbolRegistry* reg,
                                   const char* name);
 size_t dh_symbol_registry_size(const DhSymbolRegistry* reg);
+bool dh_symbol_registry_contains(const DhSymbolRegistry* reg,
+                                  const char* name);
 
 // ============================================================
 // Dependency Sort

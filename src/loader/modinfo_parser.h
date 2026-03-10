@@ -13,10 +13,7 @@
 namespace driverhub {
 
 // Extract module metadata from a .ko ELF file without fully loading it.
-//
-// Parses just the ELF section headers to locate .modinfo, extracts
-// key=value pairs (depends, alias, license, etc.), and returns the info.
-// No memory allocation, relocation, or symbol resolution is performed.
+// Delegates to the Rust dh_extract_module_info() FFI function.
 //
 // Returns true on success, false if the file is not a valid .ko.
 bool ExtractModuleInfo(const uint8_t* data, size_t size, ModuleInfo* info);
