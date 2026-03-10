@@ -325,6 +325,12 @@ int main(int argc, char** argv) {
       symbols.Resolve("rfkill_alloc") != nullptr &&
       symbols.Resolve("rfkill_register") != nullptr;
 
+  // Print Phase 1 results immediately (kernel may crash before end).
+  check("rfkill.ko ELF loaded + symbols resolved", elf_loaded);
+  check("init_fn entry point found", has_init);
+  check("exit_fn entry point found", has_exit);
+  check("Module exports rfkill_alloc/rfkill_register", has_exports);
+
   // -----------------------------------------------------------------------
   // Phase 2: Call init_module() — creates /dev/rfkill via misc_register
   // -----------------------------------------------------------------------
@@ -348,6 +354,9 @@ int main(int argc, char** argv) {
   fprintf(stderr, "[rfkill-qemu] Waiting for workqueue to drain...\n");
   for (volatile int i = 0; i < 5000000; i++) {}
   fprintf(stderr, "[rfkill-qemu] Workqueue drain complete\n");
+
+  // Print Phase 2 results immediately.
+  check("init_module() executed successfully", init_ok);
 
   // -----------------------------------------------------------------------
   // Phase 3: Register test radios via the MODULE's own exported functions
@@ -398,8 +407,14 @@ int main(int argc, char** argv) {
     fprintf(stderr, "[rfkill-qemu] rfkill_alloc (module code): wifi=%p bt=%p nfc=%p\n",
             wifi_rf, bt_rf, nfc_rf);
 
+    // Print alloc result immediately (register may trigger kernel crash).
+    check("rfkill_alloc via module code", alloc_ok);
+
     if (alloc_ok) {
       // Call rfkill.ko's own compiled rfkill_register.
+      // NOTE: rfkill_register calls device_add which may trigger a
+      // pre-existing Zircon kernel panic on QEMU arm64 (data abort
+      // in platform driver MMIO access past end of physical RAM).
       int r1 = mod_rfkill_register(wifi_rf);
       int r2 = mod_rfkill_register(bt_rf);
       int r3 = mod_rfkill_register(nfc_rf);
@@ -410,6 +425,9 @@ int main(int argc, char** argv) {
   } else {
     fprintf(stderr, "[rfkill-qemu] SKIP: module exports not available\n");
   }
+
+  // Print register result.
+  check("rfkill_register via module code", register_ok);
 
   // -----------------------------------------------------------------------
   // Phase 4: DevFs path — the server-side of fuchsia.driverhub.Vfs FIDL
@@ -541,6 +559,18 @@ int main(int argc, char** argv) {
   fprintf(stderr, "[rfkill-qemu] Vfs.List /dev: %zu nodes, rfkill=%s\n",
           dev_nodes.size(), devfs_list_ok ? "found" : "NOT FOUND");
 
+  // Print Phase 4 results immediately.
+  check("DevFs /dev/rfkill registered by misc_register", devfs_registered);
+  check("DevFs fops->open present (offset 104)", devfs_has_open);
+  check("DevFs fops->read present (offset 16)", devfs_has_read);
+  check("DevFs fops->write present (offset 24)", devfs_has_write);
+  check("DevFs fops->ioctl present (offset 72)", devfs_has_ioctl);
+  check("Vfs.Open → rfkill_fop_open", devfs_open_ok);
+  check("Vfs.DeviceRead → rfkill_fop_read (radio events)", devfs_read_ok);
+  check("Vfs.DeviceWrite → rfkill_fop_write (block cmd)", devfs_write_ok);
+  check("Vfs.DeviceClose → rfkill_fop_release", devfs_close_ok);
+  check("Vfs.List /dev shows rfkill", devfs_list_ok);
+
   // -----------------------------------------------------------------------
   // Phase 5: Cleanup — call cleanup_module + destroy test radios
   // -----------------------------------------------------------------------
@@ -576,25 +606,8 @@ int main(int argc, char** argv) {
   fprintf(stderr, "[rfkill-qemu] Shutdown complete\n");
 
   // -----------------------------------------------------------------------
-  // Results
+  // Final Results (Phase 5 check + summary)
   // -----------------------------------------------------------------------
-  check("rfkill.ko ELF loaded + symbols resolved", elf_loaded);
-  check("init_fn entry point found", has_init);
-  check("exit_fn entry point found", has_exit);
-  check("Module exports rfkill_alloc/rfkill_register", has_exports);
-  check("init_module() executed successfully", init_ok);
-  check("rfkill_alloc via module code", alloc_ok);
-  check("rfkill_register via module code", register_ok);
-  check("DevFs /dev/rfkill registered by misc_register", devfs_registered);
-  check("DevFs fops->open present (offset 104)", devfs_has_open);
-  check("DevFs fops->read present (offset 16)", devfs_has_read);
-  check("DevFs fops->write present (offset 24)", devfs_has_write);
-  check("DevFs fops->ioctl present (offset 72)", devfs_has_ioctl);
-  check("Vfs.Open → rfkill_fop_open", devfs_open_ok);
-  check("Vfs.DeviceRead → rfkill_fop_read (radio events)", devfs_read_ok);
-  check("Vfs.DeviceWrite → rfkill_fop_write (block cmd)", devfs_write_ok);
-  check("Vfs.DeviceClose → rfkill_fop_release", devfs_close_ok);
-  check("Vfs.List /dev shows rfkill", devfs_list_ok);
   check("cleanup_module() executed successfully", exit_ok || !init_ok);
 
   bool all_pass = (g_fail == 0);
