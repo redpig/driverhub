@@ -9,6 +9,7 @@
 #include <lib/driver/logging/cpp/structured_logger.h>
 
 #include "src/fuchsia/service_bridge.h"
+#include "src/loader/module_executor.h"
 
 namespace driverhub {
 
@@ -31,11 +32,18 @@ zx::result<> ModuleChildNode::Bind(
   FDF_LOGL(INFO, parent_->logger(),
            "Binding module child node: %s", name().c_str());
 
-  // Call the module's init function.
+  // Call the module's init function with fault protection.
+  // GKI modules may contain privileged ARM64 instructions (MRS/MSR)
+  // that must be emulated via exception handling on aarch64 QEMU.
   if (module_->init_fn) {
     FDF_LOGL(INFO, parent_->logger(),
              "Calling init_module for %s", name().c_str());
-    int ret = module_->init_fn();
+    int ret = SafeCallInit(module_->init_fn);
+    if (ret == MODULE_EXEC_FAULT) {
+      FDF_LOGL(ERROR, parent_->logger(),
+               "%s: init_module FAULTED", name().c_str());
+      return zx::error(ZX_ERR_INTERNAL);
+    }
     if (ret != 0) {
       FDF_LOGL(ERROR, parent_->logger(),
                "%s: init_module failed with %d", name().c_str(), ret);
@@ -100,11 +108,15 @@ void ModuleChildNode::Unbind() {
   FDF_LOGL(INFO, parent_->logger(),
            "Unbinding module child node: %s", name().c_str());
 
-  // Call the module's exit function.
+  // Call the module's exit function with fault protection.
   if (module_->exit_fn) {
     FDF_LOGL(INFO, parent_->logger(),
              "Calling cleanup_module for %s", name().c_str());
-    module_->exit_fn();
+    int ret = SafeCallExit(module_->exit_fn);
+    if (ret == MODULE_EXEC_FAULT) {
+      FDF_LOGL(WARNING, parent_->logger(),
+               "%s: cleanup_module FAULTED", name().c_str());
+    }
   }
 
   // Remove the child node from the DFv2 topology.

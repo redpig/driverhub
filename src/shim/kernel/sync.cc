@@ -57,6 +57,7 @@ void mutex_lock(struct mutex* lock) {
 }
 
 void mutex_unlock(struct mutex* lock) {
+  if (!lock->opaque) return;
   static_cast<MutexImpl*>(lock->opaque)->mtx.unlock();
 }
 
@@ -86,6 +87,7 @@ void spin_lock(spinlock_t* lock) {
 }
 
 void spin_unlock(spinlock_t* lock) {
+  if (!lock->opaque) return;
   static_cast<SpinlockImpl*>(lock->opaque)->flag.clear(
       std::memory_order_release);
 }
@@ -123,6 +125,9 @@ void init_completion(struct completion* c) {
 }
 
 void complete(struct completion* c) {
+  if (!c->opaque) {
+    init_completion(c);
+  }
   auto* impl = static_cast<CompletionImpl*>(c->opaque);
   {
     std::lock_guard<std::mutex> lk(impl->mtx);
@@ -132,6 +137,9 @@ void complete(struct completion* c) {
 }
 
 void wait_for_completion(struct completion* c) {
+  if (!c->opaque) {
+    init_completion(c);
+  }
   auto* impl = static_cast<CompletionImpl*>(c->opaque);
   std::unique_lock<std::mutex> lk(impl->mtx);
   impl->cv.wait(lk, [impl] { return impl->done; });
@@ -139,6 +147,9 @@ void wait_for_completion(struct completion* c) {
 
 unsigned long wait_for_completion_timeout(struct completion* c,
                                           unsigned long timeout_jiffies) {
+  if (!c->opaque) {
+    init_completion(c);
+  }
   auto* impl = static_cast<CompletionImpl*>(c->opaque);
   // Approximate: 1 jiffy ≈ 1ms (HZ=1000 on most Android kernels).
   auto timeout = std::chrono::milliseconds(timeout_jiffies);

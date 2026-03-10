@@ -6,6 +6,8 @@
 
 #include <cstdio>
 
+#include "src/loader/module_executor.h"
+
 namespace driverhub {
 
 ModuleNode::ModuleNode(std::unique_ptr<LoadedModule> module)
@@ -34,7 +36,12 @@ zx_status_t ModuleNode::Bind() {
   fprintf(stderr, "driverhub: calling init_module for %s\n",
           module_->name.c_str());
 
-  int ret = module_->init_fn();
+  int ret = SafeCallInit(module_->init_fn);
+  if (ret == MODULE_EXEC_FAULT) {
+    fprintf(stderr, "driverhub: %s: init_module FAULTED\n",
+            module_->name.c_str());
+    return -1;  // ZX_ERR_INTERNAL
+  }
   if (ret != 0) {
     fprintf(stderr, "driverhub: %s: init_module returned %d\n",
             module_->name.c_str(), ret);
@@ -53,7 +60,11 @@ void ModuleNode::Unbind() {
   if (module_->exit_fn) {
     fprintf(stderr, "driverhub: calling cleanup_module for %s\n",
             module_->name.c_str());
-    module_->exit_fn();
+    int ret = SafeCallExit(module_->exit_fn);
+    if (ret == MODULE_EXEC_FAULT) {
+      fprintf(stderr, "driverhub: %s: cleanup_module FAULTED\n",
+              module_->name.c_str());
+    }
   }
 
   bound_ = false;
