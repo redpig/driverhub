@@ -9,18 +9,32 @@
 
 use std::ptr;
 
+/// Function pointer type for external memory allocation (C++ callback).
+/// Takes size in bytes, returns a pointer to RWX memory or null on failure.
+pub type AllocFn = unsafe extern "C" fn(size: usize) -> *mut u8;
+
+/// Function pointer type for external memory deallocation (C++ callback).
+/// Takes the pointer and size returned by the matching AllocFn.
+pub type DeallocFn = unsafe extern "C" fn(ptr: *mut u8, size: usize);
+
 /// A block of executable memory allocated for module sections.
 pub struct MemoryAllocation {
     pub base: *mut u8,
     pub size: usize,
+    /// If set, use the external deallocator instead of munmap.
+    dealloc_fn: Option<DeallocFn>,
 }
 
 impl MemoryAllocation {
     /// Release the allocation. After this call, `base` is null.
     pub fn release(&mut self) {
         if !self.base.is_null() && self.size > 0 {
-            unsafe {
-                libc::munmap(self.base as *mut libc::c_void, self.size);
+            if let Some(dealloc) = self.dealloc_fn {
+                unsafe { dealloc(self.base, self.size) };
+            } else {
+                unsafe {
+                    libc::munmap(self.base as *mut libc::c_void, self.size);
+                }
             }
             self.base = ptr::null_mut();
             self.size = 0;
@@ -68,6 +82,26 @@ pub fn mmap_allocate(size: usize) -> Option<MemoryAllocation> {
         Some(MemoryAllocation {
             base: ptr as *mut u8,
             size,
+            dealloc_fn: None,
+        })
+    }
+}
+
+/// Allocate memory using an external C++ allocator callback.
+pub fn external_allocate(
+    size: usize,
+    alloc_fn: AllocFn,
+    dealloc_fn: DeallocFn,
+) -> Option<MemoryAllocation> {
+    let ptr = unsafe { alloc_fn(size) };
+    if ptr.is_null() {
+        eprintln!("driverhub: external allocator failed for {} bytes", size);
+        None
+    } else {
+        Some(MemoryAllocation {
+            base: ptr,
+            size,
+            dealloc_fn: Some(dealloc_fn),
         })
     }
 }

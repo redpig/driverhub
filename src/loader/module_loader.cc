@@ -8,10 +8,43 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
+#include "src/loader/memory_allocator.h"
 #include "src/symbols/symbol_registry.h"
 
 namespace driverhub {
+
+// Bridge between C++ MemoryAllocator and the Rust FFI allocator callbacks.
+// The Rust loader calls alloc/dealloc via C function pointers; we route
+// those through the thread-local MemoryAllocator instance.
+namespace {
+
+thread_local MemoryAllocator* g_allocator = nullptr;
+thread_local std::unordered_map<uint8_t*, MemoryAllocation*>* g_alloc_map = nullptr;
+
+uint8_t* AllocatorBridge(size_t size) {
+  if (!g_allocator) return nullptr;
+  auto* alloc = g_allocator->Allocate(size);
+  if (!alloc || !alloc->base) return nullptr;
+  if (!g_alloc_map) {
+    g_alloc_map = new std::unordered_map<uint8_t*, MemoryAllocation*>();
+  }
+  (*g_alloc_map)[alloc->base] = alloc;
+  return alloc->base;
+}
+
+void DeallocatorBridge(uint8_t* ptr, size_t /*size*/) {
+  if (!g_alloc_map || !ptr) return;
+  auto it = g_alloc_map->find(ptr);
+  if (it != g_alloc_map->end()) {
+    it->second->Release();
+    delete it->second;
+    g_alloc_map->erase(it);
+  }
+}
+
+}  // namespace
 
 // LoadedModule destructor — frees the underlying Rust handle.
 LoadedModule::~LoadedModule() {
@@ -50,6 +83,13 @@ LoadedModule& LoadedModule::operator=(LoadedModule&& other) noexcept {
 
 ModuleLoader::ModuleLoader(SymbolRegistry& symbols)
     : rust_loader_(dh_module_loader_new(symbols.handle())) {}
+
+ModuleLoader::ModuleLoader(SymbolRegistry& symbols, MemoryAllocator& allocator)
+    : rust_loader_(dh_module_loader_new_with_allocator(
+          symbols.handle(), AllocatorBridge, DeallocatorBridge)) {
+  // Store the allocator for the bridge callbacks.
+  g_allocator = &allocator;
+}
 
 ModuleLoader::~ModuleLoader() {
   if (rust_loader_) {

@@ -37,7 +37,7 @@
 #include "src/shim/subsystem/vfs_service.h"
 #include "src/symbols/symbol_registry.h"
 
-// Platform-specific allocator.
+// Platform-specific includes.
 #if defined(__Fuchsia__)
 #include "src/fuchsia/resource_provider.h"
 #include "src/fuchsia/vmo_module_loader.h"
@@ -48,8 +48,6 @@
 #include <zircon/threads.h>
 #include <threads.h>
 #include <atomic>
-#else
-#include "src/loader/mmap_allocator.h"
 #endif
 
 // Linux rfkill userspace ABI — matches the kernel's struct rfkill_event.
@@ -268,11 +266,11 @@ int main(int argc, char** argv) {
   fprintf(stderr, "[rfkill-qemu] Registered %zu KMI symbols\n", kmi_count);
 
 #if defined(__Fuchsia__)
-  driverhub::VmoAllocator allocator;
+  driverhub::VmoAllocator vmo_allocator;
+  driverhub::ModuleLoader loader(symbols, vmo_allocator);
 #else
-  driverhub::MmapAllocator allocator;
+  driverhub::ModuleLoader loader(symbols);
 #endif
-  driverhub::ModuleLoader loader(symbols, allocator);
 
   std::unique_ptr<driverhub::LoadedModule> module;
   if (file_ok) {
@@ -289,21 +287,18 @@ int main(int argc, char** argv) {
     fprintf(stderr, "[rfkill-qemu]   init_fn: %p  exit_fn: %p\n",
             reinterpret_cast<void*>(module->init_fn),
             reinterpret_cast<void*>(module->exit_fn));
-    fprintf(stderr, "[rfkill-qemu]   exports: %zu symbols\n",
-            module->exports.size());
-
-    // Verify key exports are present.
-    void* rfkill_alloc_addr = module->Resolve("rfkill_alloc");
-    void* rfkill_register_addr = module->Resolve("rfkill_register");
-    void* rfkill_destroy_addr = module->Resolve("rfkill_destroy");
+    // Verify key exports are present (registered in symbol registry by loader).
+    void* rfkill_alloc_addr = symbols.Resolve("rfkill_alloc");
+    void* rfkill_register_addr = symbols.Resolve("rfkill_register");
+    void* rfkill_destroy_addr = symbols.Resolve("rfkill_destroy");
     fprintf(stderr, "[rfkill-qemu]   rfkill_alloc:    %p\n", rfkill_alloc_addr);
     fprintf(stderr, "[rfkill-qemu]   rfkill_register: %p\n", rfkill_register_addr);
     fprintf(stderr, "[rfkill-qemu]   rfkill_destroy:  %p\n", rfkill_destroy_addr);
   }
 
   bool has_exports = elf_loaded &&
-      module->Resolve("rfkill_alloc") != nullptr &&
-      module->Resolve("rfkill_register") != nullptr;
+      symbols.Resolve("rfkill_alloc") != nullptr &&
+      symbols.Resolve("rfkill_register") != nullptr;
 
   // -----------------------------------------------------------------------
   // Phase 2: Call init_module() — creates /dev/rfkill via misc_register
@@ -345,13 +340,13 @@ int main(int argc, char** argv) {
   using rfkill_destroy_fn_t = void(*)(void*);
 
   auto mod_rfkill_alloc = reinterpret_cast<rfkill_alloc_fn_t>(
-      module->Resolve("rfkill_alloc"));
+      symbols.Resolve("rfkill_alloc"));
   auto mod_rfkill_register = reinterpret_cast<rfkill_register_fn_t>(
-      module->Resolve("rfkill_register"));
+      symbols.Resolve("rfkill_register"));
   auto mod_rfkill_unregister = reinterpret_cast<rfkill_unregister_fn_t>(
-      module->Resolve("rfkill_unregister"));
+      symbols.Resolve("rfkill_unregister"));
   auto mod_rfkill_destroy = reinterpret_cast<rfkill_destroy_fn_t>(
-      module->Resolve("rfkill_destroy"));
+      symbols.Resolve("rfkill_destroy"));
 
   void* wifi_rf = nullptr;
   void* bt_rf = nullptr;

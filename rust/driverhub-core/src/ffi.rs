@@ -263,10 +263,12 @@ pub unsafe extern "C" fn dh_topological_sort(
 // Module Loader FFI
 // ============================================================
 
-/// Opaque loader handle wrapping a `SymbolRegistry` pointer.
-/// The loader borrows the registry, so the registry must outlive the loader.
+/// Opaque loader handle wrapping a `SymbolRegistry` pointer and optional
+/// external allocator callbacks.
 pub struct DhModuleLoader {
     registry: *mut SymbolRegistry,
+    alloc_fn: Option<crate::allocator::AllocFn>,
+    dealloc_fn: Option<crate::allocator::DeallocFn>,
 }
 
 #[no_mangle]
@@ -276,7 +278,28 @@ pub unsafe extern "C" fn dh_module_loader_new(
     if registry.is_null() {
         return ptr::null_mut();
     }
-    Box::into_raw(Box::new(DhModuleLoader { registry }))
+    Box::into_raw(Box::new(DhModuleLoader {
+        registry,
+        alloc_fn: None,
+        dealloc_fn: None,
+    }))
+}
+
+/// Create a module loader with an external allocator (e.g. VMO-backed on Fuchsia).
+#[no_mangle]
+pub unsafe extern "C" fn dh_module_loader_new_with_allocator(
+    registry: *mut SymbolRegistry,
+    alloc_fn: crate::allocator::AllocFn,
+    dealloc_fn: crate::allocator::DeallocFn,
+) -> *mut DhModuleLoader {
+    if registry.is_null() {
+        return ptr::null_mut();
+    }
+    Box::into_raw(Box::new(DhModuleLoader {
+        registry,
+        alloc_fn: Some(alloc_fn),
+        dealloc_fn: Some(dealloc_fn),
+    }))
 }
 
 #[no_mangle]
@@ -299,7 +322,13 @@ pub unsafe extern "C" fn dh_module_loader_load(
     let name_str = CStr::from_ptr(name).to_str().unwrap_or("unknown");
     let data_slice = std::slice::from_raw_parts(data, size);
     let registry = &mut *(*loader).registry;
-    let mut ml = ModuleLoader::new(registry);
+    let mut ml = if let (Some(alloc_fn), Some(dealloc_fn)) =
+        ((*loader).alloc_fn, (*loader).dealloc_fn)
+    {
+        ModuleLoader::with_allocator(registry, alloc_fn, dealloc_fn)
+    } else {
+        ModuleLoader::new(registry)
+    };
     match ml.load(name_str, data_slice) {
         Some(module) => Box::into_raw(Box::new(module)),
         None => ptr::null_mut(),

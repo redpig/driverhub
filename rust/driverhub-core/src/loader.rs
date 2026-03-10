@@ -11,7 +11,9 @@
 
 use std::collections::HashMap;
 
-use crate::allocator::{mmap_allocate, MemoryAllocation};
+use crate::allocator::{
+    external_allocate, mmap_allocate, AllocFn, DeallocFn, MemoryAllocation,
+};
 use crate::elf;
 use crate::modinfo::{self, ModuleInfo};
 use crate::symbols::SymbolRegistry;
@@ -42,6 +44,8 @@ impl LoadedModule {
 /// Loads .ko modules, resolving symbols against a shared registry.
 pub struct ModuleLoader<'a> {
     symbols: &'a mut SymbolRegistry,
+    alloc_fn: Option<AllocFn>,
+    dealloc_fn: Option<DeallocFn>,
 }
 
 /// Internal: a section loaded into memory.
@@ -53,7 +57,33 @@ struct LoadedSection {
 
 impl<'a> ModuleLoader<'a> {
     pub fn new(symbols: &'a mut SymbolRegistry) -> Self {
-        Self { symbols }
+        Self {
+            symbols,
+            alloc_fn: None,
+            dealloc_fn: None,
+        }
+    }
+
+    /// Create a loader with an external allocator callback.
+    pub fn with_allocator(
+        symbols: &'a mut SymbolRegistry,
+        alloc_fn: AllocFn,
+        dealloc_fn: DeallocFn,
+    ) -> Self {
+        Self {
+            symbols,
+            alloc_fn: Some(alloc_fn),
+            dealloc_fn: Some(dealloc_fn),
+        }
+    }
+
+    /// Allocate memory using the external allocator if set, else mmap.
+    fn allocate(&self, size: usize) -> Option<MemoryAllocation> {
+        if let (Some(alloc_fn), Some(dealloc_fn)) = (self.alloc_fn, self.dealloc_fn) {
+            external_allocate(size, alloc_fn, dealloc_fn)
+        } else {
+            mmap_allocate(size)
+        }
     }
 
     /// Load a .ko module from raw ELF bytes.
@@ -166,8 +196,8 @@ impl<'a> ModuleLoader<'a> {
         let mut got_offset = total_alloc;
         total_alloc += got_entry_count * got_entry_size;
 
-        // Allocate RWX memory.
-        let mut alloc = mmap_allocate(total_alloc).or_else(|| {
+        // Allocate RWX memory (external allocator if set, else mmap).
+        let mut alloc = self.allocate(total_alloc).or_else(|| {
             eprintln!(
                 "driverhub: {}: memory allocation failed for {} bytes",
                 name, total_alloc

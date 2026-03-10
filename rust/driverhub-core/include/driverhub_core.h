@@ -76,7 +76,18 @@ bool dh_topological_sort(const char** names,
 typedef struct DhModuleLoader DhModuleLoader;
 typedef struct DhLoadedModule DhLoadedModule;
 
+// Allocator callback types for platform-specific memory allocation.
+// alloc_fn: allocate `size` bytes of RWX memory, return pointer or NULL.
+// dealloc_fn: free memory previously returned by alloc_fn.
+typedef uint8_t* (*dh_alloc_fn_t)(size_t size);
+typedef void (*dh_dealloc_fn_t)(uint8_t* ptr, size_t size);
+
 DhModuleLoader* dh_module_loader_new(DhSymbolRegistry* registry);
+
+// Create a module loader with an external allocator (e.g. VMO-backed).
+DhModuleLoader* dh_module_loader_new_with_allocator(DhSymbolRegistry* registry,
+                                                     dh_alloc_fn_t alloc_fn,
+                                                     dh_dealloc_fn_t dealloc_fn);
 void dh_module_loader_free(DhModuleLoader* loader);
 
 DhLoadedModule* dh_module_loader_load(DhModuleLoader* loader,

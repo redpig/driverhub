@@ -51,13 +51,20 @@ struct LoadedModule {
 };
 
 class SymbolRegistry;
+class MemoryAllocator;
 
 // Loads Linux GKI .ko modules (ELF ET_REL) via the Rust driverhub-core
 // library and resolves their symbols against the KMI shim registry.
 class ModuleLoader {
  public:
   // Takes a symbol registry for resolving KMI symbols.
+  // Uses built-in mmap allocator (host only).
   explicit ModuleLoader(SymbolRegistry& symbols);
+
+  // Takes a symbol registry and a platform-specific memory allocator
+  // (e.g. VmoAllocator on Fuchsia).
+  ModuleLoader(SymbolRegistry& symbols, MemoryAllocator& allocator);
+
   ~ModuleLoader();
 
   // Load a .ko module from raw ELF bytes. Resolves symbols, applies
