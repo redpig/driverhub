@@ -11,6 +11,8 @@
 #include <cstdio>
 #include <cstring>
 
+#include "src/runner/trampoline.h"
+
 namespace driverhub {
 
 SymbolProxyServer::SymbolProxyServer(uint64_t target_addr,
@@ -93,28 +95,16 @@ void SymbolProxyServer::Call(CallRequest& request,
 
   // Create a thread in the target process to execute the proxied function.
   //
-  // The trampoline needs to:
-  // 1. Read args from target_vmo_addr
-  // 2. Call the function at target_addr_ with appropriate calling convention
-  // 3. Write result back to target_vmo_addr + offset
-  // 4. Exit the thread
+  // The trampoline code (see trampoline.h) handles marshaling register
+  // arguments according to the platform C calling convention:
+  //   - AArch64: args in x0-x7, return in x0
+  //   - x86_64:  args in rdi/rsi/rdx/rcx/r8/r9, return in rax
   //
-  // For simple functions with <= 8 register args (common in the Linux kernel
-  // ABI), the calling convention passes args in x0-x7 on AArch64 or
-  // rdi/rsi/rdx/rcx/r8/r9 on x86_64. The proxy deserializes from the VMO
-  // into registers before the call.
-  //
-  // For the initial implementation, we support functions with a single
-  // pointer argument (the VMO address containing serialized args) and
-  // use a small trampoline stub.
-  //
-  // TODO(driverhub): Generate architecture-specific trampoline stubs that
-  // properly marshal arguments according to the function's C signature.
-  // This will require a function signature registry alongside the symbol
-  // registry.
-
-  // For now, call the function directly with the VMO address as arg1.
-  // This works for functions that accept a single pointer/context argument.
+  // The caller serializes arguments into the VMO. The dispatch function
+  // in the target process reads them and calls the target function.
+  // For the current implementation, the target function receives the VMO
+  // buffer address as its first argument, enabling both simple single-arg
+  // functions and multi-arg dispatch via the trampoline.
   zx::thread proxy_thread;
   status = zx::thread::create(target_process_, "sym_proxy",
                                strlen("sym_proxy"), 0, &proxy_thread);

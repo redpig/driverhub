@@ -93,6 +93,30 @@ assembly or board driver configuration):
             from: "parent",
             to: [ "#driverhub-runner" ],
         },
+        {
+            protocol: "fuchsia.process.Launcher",
+            from: "parent",
+            to: [ "#driverhub-runner" ],
+        },
+        {
+            protocol: "fuchsia.kernel.RootJobForInspect",
+            from: "parent",
+            to: [ "#driverhub-runner" ],
+            availability: "optional",
+        },
+        {
+            // Route DeviceFs to Starnix for procfs/sysfs bridging.
+            protocol: "fuchsia.driverhub.DeviceFs",
+            from: "#driverhub-runner",
+            to: [ "#starnix_manager" ],
+        },
+        {
+            // Route FirmwareLoader from Starnix or firmware service.
+            protocol: "fuchsia.driverhub.FirmwareLoader",
+            from: "#firmware-service",
+            to: [ "#driverhub-runner" ],
+            availability: "optional",
+        },
     ],
 }
 ```
@@ -169,13 +193,63 @@ this scenario — it falls back to `/boot` when `/pkg` is not available.
 
 The DFv2 bus driver component (`driverhub-component`) binds to platform
 devices. Your board driver must create a platform device node that matches
-DriverHub's bind rules:
+DriverHub's bind rules (`meta/driverhub.bind`):
 
 ```
-// meta/driverhub.bind
 using fuchsia.platform;
 
 fuchsia.platform.DRIVER_FRAMEWORK_VERSION == 2;
+fuchsia.BIND_PLATFORM_DEV_VID == 0x00;  // PDEV_VID_GENERIC
+fuchsia.BIND_PLATFORM_DEV_DID == 0x01;  // PDEV_DID_DRIVERHUB
+```
+
+### Creating the platform device in your board driver
+
+Your board driver must create a platform device node that DriverHub can
+bind to. Here is an example in C++ using the Fuchsia platform bus API:
+
+```cpp
+#include <lib/ddk/platform-defs.h>
+
+// In your board driver's Init() or AddDevices():
+static const pbus_dev_t driverhub_dev = {
+    .name = "driverhub",
+    .vid = PDEV_VID_GENERIC,
+    .did = 0x01,  // PDEV_DID_DRIVERHUB
+    // Optional: MMIO/IRQ resources for .ko modules that need hardware access.
+    .mmio_list = driverhub_mmios,
+    .mmio_count = std::size(driverhub_mmios),
+    .irq_list = driverhub_irqs,
+    .irq_count = std::size(driverhub_irqs),
+};
+
+zx_status_t status = pbus_.DeviceAdd(&driverhub_dev);
+if (status != ZX_OK) {
+    zxlogf(ERROR, "Failed to add driverhub platform device: %s",
+           zx_status_get_string(status));
+}
+```
+
+### MMIO and IRQ resource mapping
+
+If your `.ko` modules need hardware access, the board driver exposes MMIO
+and IRQ resources through the platform device. These are then available to
+modules via `platform_get_resource()` and `platform_get_irq()` shims:
+
+```cpp
+static const pbus_mmio_t driverhub_mmios[] = {
+    {
+        .base = 0xFF800000,  // Hardware register base
+        .length = 0x10000,   // 64KB region
+    },
+};
+
+static const pbus_irq_t driverhub_irqs[] = {
+    {
+        .irq = 42,           // GIC SPI interrupt number
+        .mode = ZX_INTERRUPT_MODE_EDGE_HIGH,
+    },
+};
 ```
 
 The board driver exposes resources (MMIO, IRQ) that `.ko` modules need via
@@ -211,6 +285,9 @@ these must be routed from the appropriate providers.
 | Capability | Provider | Purpose |
 |-----------|----------|---------|
 | `fuchsia.driverhub.SymbolRegistry` | DriverHub runner | Cross-module symbol resolution |
+| `fuchsia.driverhub.DeviceFs` | DriverHub runner | Starnix procfs/sysfs/devfs bridge |
+| `fuchsia.driverhub.FirmwareLoader` | Starnix / firmware svc | Firmware blob loading for `request_firmware()` |
+| `fuchsia.process.Launcher` | Parent realm | Child process creation for module isolation |
 | `fuchsia.hardware.i2c.Service` | I2C driver | I2C bus access |
 | `fuchsia.hardware.spi.Service` | SPI driver | SPI bus access |
 | `fuchsia.hardware.gpio.Service` | GPIO driver | GPIO pin access |
@@ -264,7 +341,7 @@ fx test driverhub-tests
 
 | Symptom | Likely cause | Fix |
 |---------|-------------|-----|
-| Runner not starting | Missing `VmexResource` routing | Add `fuchsia.kernel.VmexResource` to offers |
+| Runner not starting | Missing `VmexResource` or `ProcessLauncher` routing | Add `fuchsia.kernel.VmexResource` and `fuchsia.process.Launcher` to offers |
 | Module fails to load | Missing symbol in KMI shim | Check `driverhub` log for "unresolved symbol" |
 | Module crashes on init | Unshimmed kernel API called | Add stub to `src/shim/` and rebuild |
 | Bind failure | Missing capability routing | Check `.cml` `use` declarations match offers |

@@ -15,6 +15,9 @@
         {
             protocol: "fuchsia.driverhub.SymbolRegistry",
         },
+        {
+            protocol: "fuchsia.driverhub.DeviceFs",
+        },
     ],
     expose: [
         {
@@ -25,15 +28,30 @@
             protocol: "fuchsia.driverhub.SymbolRegistry",
             from: "self",
         },
+        {
+            protocol: "fuchsia.driverhub.DeviceFs",
+            from: "self",
+        },
     ],
     use: [
         {
             protocol: "fuchsia.kernel.VmexResource",
         },
         {
+            // Creates child processes for .ko module isolation.
+            protocol: "fuchsia.process.Launcher",
+        },
+        {
             // Job under which module processes are created. In bootfs the
             // default job may not be set, so this is routed explicitly.
             protocol: "fuchsia.kernel.RootJobForInspect",
+            availability: "optional",
+        },
+        {
+            // Firmware loading service — served by Starnix or a Fuchsia
+            // firmware component. Used when .ko modules call
+            // request_firmware().
+            protocol: "fuchsia.driverhub.FirmwareLoader",
             availability: "optional",
         },
         {

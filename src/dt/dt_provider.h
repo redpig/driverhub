@@ -59,10 +59,49 @@ class StaticDtProvider : public DtProvider {
 };
 
 // Dynamic DT provider: receives nodes from Fuchsia's device tree visitor.
+//
+// In a full Fuchsia integration this connects to the board driver's DT visitor
+// protocol (fuchsia.hardware.platform.bus) to receive device tree nodes at
+// runtime.  When the visitor service is not available (e.g., during early
+// bringup or testing), it falls back to reading a JSON manifest bundled as a
+// component resource at |manifest_path|.
+//
+// Manifest format (dt-visitor.json):
+//   {
+//     "nodes": [
+//       {
+//         "compatible": "vendor,device-name",
+//         "status": "okay",
+//         "reg": [ { "base": "0x40000000", "size": "0x1000" } ],
+//         "interrupts": [ 32, 33 ],
+//         "properties": { "clock-frequency": "100000" }
+//       }
+//     ]
+//   }
 class VisitorDtProvider : public DtProvider {
  public:
+  // Default constructor — uses the standard manifest path
+  // /pkg/data/dt-visitor.json.
   VisitorDtProvider();
+
+  // Constructor with an explicit manifest path, useful for testing.
+  explicit VisitorDtProvider(std::string manifest_path);
+
   std::vector<DtModuleEntry> GetModuleEntries() override;
+
+ private:
+  // Attempt to connect to the Fuchsia DT visitor service.  Returns true and
+  // populates |entries| on success.
+  bool TryVisitorService(std::vector<DtModuleEntry>& entries);
+
+  // Fallback: parse the JSON manifest file at |manifest_path_|.
+  bool ParseManifest(std::vector<DtModuleEntry>& entries);
+
+  // Derive module .ko path from a compatible string using the same convention
+  // as StaticDtProvider.
+  static std::string ModulePathFromCompatible(const std::string& compatible);
+
+  std::string manifest_path_;
 };
 
 }  // namespace driverhub

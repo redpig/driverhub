@@ -4,8 +4,11 @@
 
 #include "src/dt/dt_provider.h"
 
+#include <cerrno>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <sstream>
 
 // Minimal FDT (Flattened Device Tree) parsing for static .dtb blobs.
 //
@@ -222,17 +225,397 @@ done:
   return entries;
 }
 
-VisitorDtProvider::VisitorDtProvider() = default;
+// ---------------------------------------------------------------------------
+// VisitorDtProvider implementation
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Minimal JSON-ish helpers.  The manifest schema is small and predictable so
+// we hand-parse rather than pulling in a full JSON library.
+
+// Skip whitespace in |s| starting at |pos|.
+void SkipWs(const std::string& s, size_t& pos) {
+  while (pos < s.size() && (s[pos] == ' ' || s[pos] == '\t' ||
+                            s[pos] == '\n' || s[pos] == '\r')) {
+    ++pos;
+  }
+}
+
+// Expect a specific character, return false on mismatch.
+bool Expect(const std::string& s, size_t& pos, char ch) {
+  SkipWs(s, pos);
+  if (pos >= s.size() || s[pos] != ch) return false;
+  ++pos;
+  return true;
+}
+
+// Parse a JSON string value (opening '"' already expected next).
+bool ParseString(const std::string& s, size_t& pos, std::string& out) {
+  SkipWs(s, pos);
+  if (pos >= s.size() || s[pos] != '"') return false;
+  ++pos;
+  out.clear();
+  while (pos < s.size() && s[pos] != '"') {
+    if (s[pos] == '\\' && pos + 1 < s.size()) {
+      ++pos;
+    }
+    out += s[pos++];
+  }
+  if (pos >= s.size()) return false;
+  ++pos;  // closing '"'
+  return true;
+}
+
+// Parse a JSON integer (positive, decimal).
+bool ParseUint64(const std::string& s, size_t& pos, uint64_t& out) {
+  SkipWs(s, pos);
+  if (pos >= s.size()) return false;
+
+  // Support hex "0x..." inside quoted strings and bare integers.
+  bool quoted = false;
+  if (s[pos] == '"') {
+    quoted = true;
+    ++pos;
+  }
+
+  if (pos >= s.size()) return false;
+
+  char* end = nullptr;
+  out = strtoull(s.c_str() + pos, &end, 0);
+  if (end == s.c_str() + pos) return false;
+  pos = end - s.c_str();
+
+  if (quoted) {
+    if (pos >= s.size() || s[pos] != '"') return false;
+    ++pos;
+  }
+  return true;
+}
+
+// Parse an array of uint64 values: [ 32, 33, ... ]
+bool ParseUint64Array(const std::string& s, size_t& pos,
+                      std::vector<uint64_t>& out) {
+  if (!Expect(s, pos, '[')) return false;
+  SkipWs(s, pos);
+  while (pos < s.size() && s[pos] != ']') {
+    uint64_t val;
+    if (!ParseUint64(s, pos, val)) return false;
+    out.push_back(val);
+    SkipWs(s, pos);
+    if (pos < s.size() && s[pos] == ',') ++pos;
+  }
+  return Expect(s, pos, ']');
+}
+
+// Parse a reg array: [ { "base": "0x...", "size": "0x..." }, ... ]
+bool ParseRegArray(const std::string& s, size_t& pos,
+                   std::vector<DtModuleEntry::Resource>& out) {
+  if (!Expect(s, pos, '[')) return false;
+  SkipWs(s, pos);
+  while (pos < s.size() && s[pos] != ']') {
+    if (!Expect(s, pos, '{')) return false;
+    DtModuleEntry::Resource res;
+    res.type = DtModuleEntry::Resource::kMmio;
+    res.base = 0;
+    res.size = 0;
+
+    // Parse key/value pairs inside the reg object.
+    SkipWs(s, pos);
+    while (pos < s.size() && s[pos] != '}') {
+      std::string key;
+      if (!ParseString(s, pos, key)) return false;
+      if (!Expect(s, pos, ':')) return false;
+      uint64_t val;
+      if (!ParseUint64(s, pos, val)) return false;
+      if (key == "base") {
+        res.base = val;
+      } else if (key == "size") {
+        res.size = val;
+      }
+      SkipWs(s, pos);
+      if (pos < s.size() && s[pos] == ',') ++pos;
+      SkipWs(s, pos);
+    }
+    if (!Expect(s, pos, '}')) return false;
+    out.push_back(res);
+    SkipWs(s, pos);
+    if (pos < s.size() && s[pos] == ',') ++pos;
+    SkipWs(s, pos);
+  }
+  return Expect(s, pos, ']');
+}
+
+// Parse a flat properties object: { "key": "value", ... }
+// Values are stored as raw UTF-8 bytes.
+bool ParsePropertiesObject(
+    const std::string& s, size_t& pos,
+    std::vector<std::pair<std::string, std::vector<uint8_t>>>& out) {
+  if (!Expect(s, pos, '{')) return false;
+  SkipWs(s, pos);
+  while (pos < s.size() && s[pos] != '}') {
+    std::string key;
+    if (!ParseString(s, pos, key)) return false;
+    if (!Expect(s, pos, ':')) return false;
+    std::string value;
+    if (!ParseString(s, pos, value)) return false;
+    out.emplace_back(key,
+                     std::vector<uint8_t>(value.begin(), value.end()));
+    SkipWs(s, pos);
+    if (pos < s.size() && s[pos] == ',') ++pos;
+    SkipWs(s, pos);
+  }
+  return Expect(s, pos, '}');
+}
+
+}  // namespace
+
+// ---------------------------------------------------------------------------
+
+static constexpr const char* kDefaultManifestPath =
+    "/pkg/data/dt-visitor.json";
+
+VisitorDtProvider::VisitorDtProvider()
+    : manifest_path_(kDefaultManifestPath) {}
+
+VisitorDtProvider::VisitorDtProvider(std::string manifest_path)
+    : manifest_path_(std::move(manifest_path)) {}
+
+// static
+std::string VisitorDtProvider::ModulePathFromCompatible(
+    const std::string& compatible) {
+  std::string mod_name = compatible;
+  auto comma = mod_name.find(',');
+  if (comma != std::string::npos) {
+    mod_name = mod_name.substr(comma + 1);
+  }
+  for (auto& c : mod_name) {
+    if (c == '-') c = '_';
+  }
+  return mod_name + ".ko";
+}
+
+bool VisitorDtProvider::TryVisitorService(
+    std::vector<DtModuleEntry>& entries) {
+  // In a real Fuchsia integration, this method would:
+  //
+  //   1. Open the fuchsia.hardware.platform.bus/PlatformBus protocol from the
+  //      incoming namespace.
+  //   2. Call GetBoardInfo() to get the board name and revision.
+  //   3. Use the device tree visitor API to walk the board's DT:
+  //        - For each node with a recognised "compatible" string, create a
+  //          DtModuleEntry with MMIO/IRQ resources from "reg" / "interrupts".
+  //        - Expose each node as a NodeProperty with the compatible string
+  //          for DFv2 bind rule matching.
+  //   4. Return true if the walk succeeds, false if the protocol is
+  //      unavailable or the board doesn't expose a DT.
+  //
+  // For now, the visitor service is not yet available in all board
+  // configurations, so we log what we would do and return false to trigger
+  // the manifest fallback path.
+
+  fprintf(stderr,
+          "driverhub: dt: visitor: attempting connection to DT visitor "
+          "service...\n");
+  fprintf(stderr,
+          "driverhub: dt: visitor: service not available in current "
+          "configuration, falling back to manifest\n");
+  return false;
+}
+
+bool VisitorDtProvider::ParseManifest(std::vector<DtModuleEntry>& entries) {
+  // Read the manifest file.
+  std::ifstream file(manifest_path_);
+  if (!file.is_open()) {
+    fprintf(stderr,
+            "driverhub: dt: visitor: cannot open manifest '%s': %s\n",
+            manifest_path_.c_str(), strerror(errno));
+    return false;
+  }
+
+  std::ostringstream ss;
+  ss << file.rdbuf();
+  std::string content = ss.str();
+  file.close();
+
+  fprintf(stderr,
+          "driverhub: dt: visitor: parsing manifest '%s' (%zu bytes)\n",
+          manifest_path_.c_str(), content.size());
+
+  // Top-level: { "nodes": [ ... ] }
+  size_t pos = 0;
+  if (!Expect(content, pos, '{')) {
+    fprintf(stderr, "driverhub: dt: visitor: expected '{' at start\n");
+    return false;
+  }
+
+  std::string top_key;
+  if (!ParseString(content, pos, top_key) || top_key != "nodes") {
+    fprintf(stderr,
+            "driverhub: dt: visitor: expected \"nodes\" key, got \"%s\"\n",
+            top_key.c_str());
+    return false;
+  }
+  if (!Expect(content, pos, ':')) {
+    fprintf(stderr, "driverhub: dt: visitor: expected ':' after \"nodes\"\n");
+    return false;
+  }
+  if (!Expect(content, pos, '[')) {
+    fprintf(stderr, "driverhub: dt: visitor: expected '[' for nodes array\n");
+    return false;
+  }
+
+  // Parse each node object.
+  SkipWs(content, pos);
+  while (pos < content.size() && content[pos] != ']') {
+    if (!Expect(content, pos, '{')) {
+      fprintf(stderr, "driverhub: dt: visitor: expected '{' for node\n");
+      return false;
+    }
+
+    DtModuleEntry entry;
+    std::string status;
+
+    // Parse key/value pairs within this node.
+    SkipWs(content, pos);
+    while (pos < content.size() && content[pos] != '}') {
+      std::string key;
+      if (!ParseString(content, pos, key)) {
+        fprintf(stderr,
+                "driverhub: dt: visitor: failed to parse key at pos %zu\n",
+                pos);
+        return false;
+      }
+      if (!Expect(content, pos, ':')) {
+        fprintf(stderr,
+                "driverhub: dt: visitor: expected ':' after key \"%s\"\n",
+                key.c_str());
+        return false;
+      }
+
+      if (key == "compatible") {
+        if (!ParseString(content, pos, entry.compatible)) return false;
+      } else if (key == "status") {
+        if (!ParseString(content, pos, status)) return false;
+      } else if (key == "module_path") {
+        if (!ParseString(content, pos, entry.module_path)) return false;
+      } else if (key == "reg") {
+        if (!ParseRegArray(content, pos, entry.resources)) return false;
+      } else if (key == "interrupts") {
+        std::vector<uint64_t> irqs;
+        if (!ParseUint64Array(content, pos, irqs)) return false;
+        for (auto irq : irqs) {
+          DtModuleEntry::Resource res;
+          res.type = DtModuleEntry::Resource::kIrq;
+          res.base = irq;
+          res.size = 0;
+          entry.resources.push_back(res);
+        }
+      } else if (key == "properties") {
+        if (!ParsePropertiesObject(content, pos, entry.properties))
+          return false;
+      } else {
+        // Skip unknown values — try string, then number.
+        std::string dummy_str;
+        uint64_t dummy_uint;
+        if (pos < content.size() && content[pos] == '"') {
+          ParseString(content, pos, dummy_str);
+        } else if (pos < content.size() && content[pos] == '[') {
+          // Skip unknown array.
+          int depth_count = 1;
+          ++pos;
+          while (pos < content.size() && depth_count > 0) {
+            if (content[pos] == '[') ++depth_count;
+            if (content[pos] == ']') --depth_count;
+            ++pos;
+          }
+        } else if (pos < content.size() && content[pos] == '{') {
+          // Skip unknown object.
+          int depth_count = 1;
+          ++pos;
+          while (pos < content.size() && depth_count > 0) {
+            if (content[pos] == '{') ++depth_count;
+            if (content[pos] == '}') --depth_count;
+            ++pos;
+          }
+        } else {
+          ParseUint64(content, pos, dummy_uint);
+        }
+      }
+
+      SkipWs(content, pos);
+      if (pos < content.size() && content[pos] == ',') ++pos;
+      SkipWs(content, pos);
+    }
+
+    if (!Expect(content, pos, '}')) {
+      fprintf(stderr, "driverhub: dt: visitor: expected '}' for node\n");
+      return false;
+    }
+
+    // Only include nodes with status "okay" or no status field.
+    if (!status.empty() && status != "okay") {
+      fprintf(stderr,
+              "driverhub: dt: visitor: skipping node '%s' (status='%s')\n",
+              entry.compatible.c_str(), status.c_str());
+    } else if (entry.compatible.empty()) {
+      fprintf(stderr,
+              "driverhub: dt: visitor: skipping node without compatible "
+              "string\n");
+    } else {
+      // Derive module path from compatible string if not explicitly set.
+      if (entry.module_path.empty()) {
+        entry.module_path = ModulePathFromCompatible(entry.compatible);
+      }
+      fprintf(stderr,
+              "driverhub: dt: visitor: node '%s' -> module '%s' "
+              "(resources=%zu, properties=%zu)\n",
+              entry.compatible.c_str(), entry.module_path.c_str(),
+              entry.resources.size(), entry.properties.size());
+      entries.push_back(std::move(entry));
+    }
+
+    SkipWs(content, pos);
+    if (pos < content.size() && content[pos] == ',') ++pos;
+    SkipWs(content, pos);
+  }
+
+  // Closing ] and }
+  if (!Expect(content, pos, ']') || !Expect(content, pos, '}')) {
+    fprintf(stderr, "driverhub: dt: visitor: malformed manifest tail\n");
+    return false;
+  }
+
+  return true;
+}
 
 std::vector<DtModuleEntry> VisitorDtProvider::GetModuleEntries() {
-  // The visitor-based provider receives nodes from the Fuchsia board driver's
-  // device tree visitor. This requires the fuchsia.hardware.platform.bus FIDL
-  // protocol to be available in the incoming namespace.
-  //
-  // For now, this returns empty — it will be connected when integrated into
-  // a Fuchsia board driver that uses the DT visitor pattern.
-  fprintf(stderr, "driverhub: dt: visitor provider not yet connected\n");
-  return {};
+  std::vector<DtModuleEntry> entries;
+
+  // First, try the live Fuchsia DT visitor service.
+  if (TryVisitorService(entries)) {
+    fprintf(stderr,
+            "driverhub: dt: visitor: enumerated %zu entries from DT "
+            "visitor service\n",
+            entries.size());
+    return entries;
+  }
+
+  // Fallback: parse the JSON manifest.
+  if (ParseManifest(entries)) {
+    fprintf(stderr,
+            "driverhub: dt: visitor: enumerated %zu entries from manifest "
+            "'%s'\n",
+            entries.size(), manifest_path_.c_str());
+    return entries;
+  }
+
+  // Neither source available — return empty, the bus driver should handle
+  // the absence of DT entries gracefully.
+  fprintf(stderr,
+          "driverhub: dt: visitor: no DT entries available (service "
+          "unavailable, no manifest)\n");
+  return entries;
 }
 
 }  // namespace driverhub

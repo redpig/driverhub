@@ -1283,8 +1283,7 @@ int filp_open_block(void) { return 0; }
 // finish_rcuwait — 1 module(s)
 int finish_rcuwait(void) { return 0; }
 
-// firmware_request_nowarn — 1 module(s)
-int firmware_request_nowarn(void) { return 0; }
+// firmware_request_nowarn — now in firmware.cc
 
 // flush_dcache_page — 1 module(s)
 int flush_dcache_page(void) { return 0; }
@@ -2581,15 +2580,13 @@ int regulator_bulk_disable(void) { return 0; }
 // regulator_bulk_enable — 1 module(s)
 int regulator_bulk_enable(void) { return 0; }
 
-// release_firmware — 4 module(s)
-int release_firmware(void) { return 0; }
+// release_firmware — now in firmware.cc
 
 // release_sock — 12 module(s)
 int release_sock(void) { return 0; }
 
 
-// request_firmware — 3 module(s)
-int request_firmware(void) { return 0; }
+// request_firmware — now in firmware.cc
 
 // rfkill_alloc — 2 module(s)
 int rfkill_alloc(void) { return 0; }

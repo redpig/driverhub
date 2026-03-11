@@ -4,11 +4,13 @@
 
 // Entry point for the DriverHub runner process.
 //
-// The runner serves two protocols:
+// The runner serves three protocols:
 // - fuchsia.component.runner.ComponentRunner: launched by the component
 //   framework to start .ko module components.
 // - fuchsia.driverhub.SymbolRegistry: used by module processes to register
 //   and resolve cross-module EXPORT_SYMBOL dependencies.
+// - fuchsia.driverhub.DeviceFs: aggregates DevFs/SysFs/ProcFs state for
+//   Starnix integration.
 
 #include <fidl/fuchsia.component.runner/cpp/fidl.h>
 #include <fidl/fuchsia.driverhub/cpp/fidl.h>
@@ -18,6 +20,7 @@
 
 #include <cstdio>
 
+#include "src/runner/device_fs_server.h"
 #include "src/runner/ko_runner.h"
 #include "src/runner/symbol_registry_server.h"
 
@@ -56,6 +59,19 @@ int main(int argc, char** argv) {
     return 1;
   }
 
+  // Create the DeviceFs server (aggregates DevFs/SysFs/ProcFs for Starnix).
+  driverhub::DeviceFsServer device_fs(dispatcher);
+
+  // Serve fuchsia.driverhub.DeviceFs.
+  auto device_fs_result = outgoing.AddProtocol<
+      fuchsia_driverhub::DeviceFs>(&device_fs);
+  if (device_fs_result.is_error()) {
+    fprintf(stderr,
+            "driverhub: failed to serve DeviceFs: %s\n",
+            device_fs_result.status_string());
+    return 1;
+  }
+
   // Serve the outgoing directory.
   auto serve_result = outgoing.ServeFromStartupInfo();
   if (serve_result.is_error()) {
@@ -65,8 +81,8 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  fprintf(stderr, "driverhub: runner ready, serving ComponentRunner "
-          "and SymbolRegistry\n");
+  fprintf(stderr, "driverhub: runner ready, serving ComponentRunner, "
+          "SymbolRegistry, and DeviceFs\n");
 
   loop.Run();
 

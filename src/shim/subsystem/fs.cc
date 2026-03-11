@@ -13,6 +13,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "src/shim/subsystem/fs_events.h"
 #include "src/shim/subsystem/vfs_service.h"
 
 // VFS subsystem shim.
@@ -141,6 +142,15 @@ int cdev_add(struct cdev *cdev, dev_t dev, unsigned int count) {
   driverhub::DevFs::Instance().RegisterChrdev(
       name, MAJOR(dev), MINOR(dev), count, cdev->ops);
 
+  driverhub::FsEventNotify({
+      .type = driverhub::FsEventType::kAdded,
+      .entry_type = driverhub::FsEntryType::kCharDevice,
+      .path = std::string("/dev/") + name,
+      .mode = 0666,
+      .major = MAJOR(dev),
+      .minor = MINOR(dev),
+  });
+
   return 0;
 }
 
@@ -251,6 +261,22 @@ struct device *device_create(struct dh_class *cls, struct device *parent,
 
   fprintf(stderr, "driverhub: device_create '%s' (%u:%u)\n",
           name, MAJOR(devt), MINOR(devt));
+
+  driverhub::FsEventNotify({
+      .type = driverhub::FsEventType::kAdded,
+      .entry_type = driverhub::FsEntryType::kCharDevice,
+      .path = std::string("/dev/") + name,
+      .mode = 0666,
+      .major = MAJOR(devt),
+      .minor = MINOR(devt),
+      .uevent_env = {
+          std::string("ACTION=add"),
+          std::string("DEVNAME=") + name,
+          "MAJOR=" + std::to_string(MAJOR(devt)),
+          "MINOR=" + std::to_string(MINOR(devt)),
+      },
+  });
+
   return dev;
 }
 
@@ -258,6 +284,18 @@ void device_destroy(struct dh_class *cls, dev_t devt) {
   (void)cls;
   fprintf(stderr, "driverhub: device_destroy %u:%u\n",
           MAJOR(devt), MINOR(devt));
+
+  driverhub::FsEventNotify({
+      .type = driverhub::FsEventType::kRemoved,
+      .entry_type = driverhub::FsEntryType::kCharDevice,
+      .path = "/dev/device" + std::to_string(MAJOR(devt)) + "_" +
+              std::to_string(MINOR(devt)),
+      .uevent_env = {
+          std::string("ACTION=remove"),
+          "MAJOR=" + std::to_string(MAJOR(devt)),
+          "MINOR=" + std::to_string(MINOR(devt)),
+      },
+  });
 }
 
 // ============================================================
@@ -278,6 +316,16 @@ int misc_register(struct miscdevice *misc) {
   driverhub::DevFs::Instance().RegisterMisc(
       misc->name, misc->minor, misc->fops, misc->this_device);
 
+  // Notify watchers (Starnix bridge).
+  driverhub::FsEventNotify({
+      .type = driverhub::FsEventType::kAdded,
+      .entry_type = driverhub::FsEntryType::kCharDevice,
+      .path = std::string("/dev/") + (misc->name ? misc->name : "misc"),
+      .mode = 0666,
+      .major = 10,
+      .minor = static_cast<uint32_t>(misc->minor),
+  });
+
   return 0;
 }
 
@@ -294,6 +342,12 @@ void misc_deregister(struct miscdevice *misc) {
           misc->name ? misc->name : "");
 
   driverhub::DevFs::Instance().DeregisterMisc(misc->name);
+
+  driverhub::FsEventNotify({
+      .type = driverhub::FsEventType::kRemoved,
+      .entry_type = driverhub::FsEntryType::kCharDevice,
+      .path = std::string("/dev/") + (misc->name ? misc->name : "misc"),
+  });
 }
 
 // ============================================================
@@ -750,9 +804,27 @@ void kobject_del(struct kobject *kobj) {
 }
 
 void sysfs_notify(struct kobject *kobj, const char *dir, const char *attr) {
-  (void)kobj;
-  (void)dir;
   fprintf(stderr, "driverhub: sysfs: notify '%s'\n", attr ? attr : "");
+
+  // Build path from kobject + optional dir + attr.
+  std::string path = "/sys";
+  if (kobj && kobj->name) {
+    std::vector<std::string> parts;
+    for (auto *k = kobj; k; k = k->parent) {
+      if (k->name) parts.push_back(k->name);
+    }
+    for (auto it = parts.rbegin(); it != parts.rend(); ++it) {
+      path += "/" + *it;
+    }
+  }
+  if (dir) { path += "/"; path += dir; }
+  if (attr) { path += "/"; path += attr; }
+
+  driverhub::FsEventNotify({
+      .type = driverhub::FsEventType::kModified,
+      .entry_type = driverhub::FsEntryType::kRegular,
+      .path = path,
+  });
 }
 
 int sysfs_emit(char *buf, const char *fmt, ...) {
@@ -766,9 +838,51 @@ int sysfs_emit(char *buf, const char *fmt, ...) {
 }
 
 int kobject_uevent(struct kobject *kobj, int action) {
-  (void)kobj;
-  (void)action;
-  // In Linux, sends a netlink uevent. Stub for userspace.
+  // Map Linux KOBJ_ACTION enum values to action strings.
+  const char *action_str = "unknown";
+  switch (action) {
+    case 0: action_str = "add"; break;     // KOBJ_ADD
+    case 1: action_str = "remove"; break;  // KOBJ_REMOVE
+    case 2: action_str = "change"; break;  // KOBJ_CHANGE
+    case 3: action_str = "move"; break;    // KOBJ_MOVE
+    case 4: action_str = "online"; break;  // KOBJ_ONLINE
+    case 5: action_str = "offline"; break; // KOBJ_OFFLINE
+    case 6: action_str = "bind"; break;    // KOBJ_BIND
+    case 7: action_str = "unbind"; break;  // KOBJ_UNBIND
+  }
+
+  // Build kobject path by walking parent chain.
+  std::string kobj_path;
+  if (kobj && kobj->name) {
+    std::vector<std::string> parts;
+    for (auto *k = kobj; k; k = k->parent) {
+      if (k->name) parts.push_back(k->name);
+    }
+    for (auto it = parts.rbegin(); it != parts.rend(); ++it) {
+      kobj_path += "/" + *it;
+    }
+  }
+
+  fprintf(stderr, "driverhub: kobject_uevent: %s %s\n",
+          action_str, kobj_path.c_str());
+
+  // Determine event type from action.
+  driverhub::FsEventType etype;
+  if (action == 0) etype = driverhub::FsEventType::kAdded;
+  else if (action == 1) etype = driverhub::FsEventType::kRemoved;
+  else etype = driverhub::FsEventType::kModified;
+
+  driverhub::FsEventNotify({
+      .type = etype,
+      .entry_type = driverhub::FsEntryType::kDirectory,
+      .path = "/sys/devices" + kobj_path,
+      .uevent_env = {
+          std::string("ACTION=") + action_str,
+          "DEVPATH=/devices" + kobj_path,
+          "SUBSYSTEM=platform",
+      },
+  });
+
   return 0;
 }
 

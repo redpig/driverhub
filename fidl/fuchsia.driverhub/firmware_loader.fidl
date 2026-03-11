@@ -1,0 +1,41 @@
+// Copyright 2024 The DriverHub Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+/// FIDL protocol for firmware loading.
+///
+/// When a .ko module calls request_firmware(), the KMI shim layer uses this
+/// protocol to locate and load firmware blobs. The server can be:
+///   - A Starnix-hosted firmware loader (reading from /lib/firmware/)
+///   - A standalone Fuchsia firmware service component
+///   - The DriverHub runner itself (from /pkg/data/firmware/)
+///
+/// See docs/starnix-integration.md for the full design.
+library fuchsia.driverhub;
+
+using zx;
+
+/// Served by Starnix (or a firmware service), consumed by DriverHub.
+///
+/// When a .ko module calls request_firmware(), the KMI shim sends this
+/// request. A firmware service finds the blob and returns it as a VMO.
+@discoverable
+protocol FirmwareLoader {
+    /// Request a firmware blob by name.
+    /// The name matches what the Linux driver passes to request_firmware()
+    /// (e.g., "iwlwifi-cc-a0-77.ucode", "qcom/a660_gmu.bin").
+    flexible RequestFirmware(struct {
+        name string:1024;
+    }) -> (resource struct {
+        /// VMO containing the firmware blob data.
+        firmware zx.Handle:VMO;
+        /// Size of the firmware data in bytes.
+        size uint64;
+    }) error zx.Status;
+
+    /// Cancel a pending firmware request (best effort).
+    /// Corresponds to Linux release_firmware().
+    flexible CancelFirmware(struct {
+        name string:1024;
+    }) -> () error zx.Status;
+};

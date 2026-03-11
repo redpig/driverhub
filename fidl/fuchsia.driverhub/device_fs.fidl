@@ -1,0 +1,128 @@
+// Copyright 2024 The DriverHub Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+/// FIDL protocol for Starnix integration.
+///
+/// This protocol bridges DriverHub's .ko module filesystem state into
+/// Starnix's procfs/sysfs/devfs, allowing Linux userspace binaries running
+/// under Starnix to interact with DriverHub-loaded hardware drivers through
+/// the standard Linux filesystem interface.
+///
+/// See docs/starnix-integration.md for the full design.
+library fuchsia.driverhub;
+
+using zx;
+
+/// Type of filesystem entry.
+type FsEntryKind = flexible enum : uint8 {
+    DIRECTORY = 1;
+    REGULAR = 2;
+    SYMLINK = 3;
+    CHAR_DEVICE = 4;
+    BLOCK_DEVICE = 5;
+};
+
+/// Represents a single filesystem entry (sysfs attribute, proc entry, device
+/// node, etc.) as it would appear in the Linux VFS hierarchy.
+type FsEntry = table {
+    /// Full path as it would appear in Linux (e.g., "/sys/class/rtc/rtc0").
+    1: path string:1024;
+
+    /// Entry type.
+    2: kind FsEntryKind;
+
+    /// For regular files: the initial content (if readable).
+    3: content vector<byte>:MAX;
+
+    /// Permissions (Linux mode bits, e.g., 0644).
+    4: mode uint32;
+
+    /// Device major number (for char/block device nodes).
+    5: major uint32;
+
+    /// Device minor number (for char/block device nodes).
+    6: minor uint32;
+
+    /// Symlink target (for SYMLINK entries).
+    7: target string:1024;
+
+    /// Name of the .ko module that created this entry.
+    8: module_name string:256;
+};
+
+/// Kind of filesystem event.
+type FsEventKind = flexible enum : uint8 {
+    ADDED = 1;
+    REMOVED = 2;
+    MODIFIED = 3;
+};
+
+/// Event fired when a .ko module creates, removes, or modifies fs entries.
+type FsEvent = table {
+    /// What happened.
+    1: kind FsEventKind;
+
+    /// The affected entry.
+    2: entry FsEntry;
+
+    /// uevent environment variables (for device_add/kobject_uevent).
+    /// Keys and values in "KEY=VALUE" format, matching Linux uevent format.
+    3: uevent_env vector<string:256>:64;
+};
+
+/// Served by DriverHub, consumed by Starnix.
+///
+/// Starnix queries this protocol to populate /sys, /proc, and /dev with
+/// entries created by Linux kernel modules loaded via DriverHub. This is
+/// the first external sysfs provider for Fuchsia — no prior mechanism
+/// existed for external components to inject entries into Starnix's VFS.
+@discoverable
+protocol DeviceFs {
+    /// Get all current filesystem entries (for initial sync at mount time).
+    /// Returns all sysfs, procfs, and devfs entries created by loaded modules.
+    flexible ListEntries() -> (struct {
+        entries vector<FsEntry>:MAX;
+    }) error zx.Status;
+
+    /// Watch for filesystem entry changes (new devices, removed entries, etc.)
+    /// The watcher receives events for entries added/removed/modified after
+    /// the Watch() call. Entries created before Watch() are available via
+    /// ListEntries().
+    flexible Watch(resource struct {
+        watcher server_end:DeviceFsWatcher;
+    });
+
+    /// Read a sysfs/procfs attribute value.
+    /// Dispatches to the .ko module's show() callback (sysfs) or
+    /// seq_file->show / fops->read callback (procfs).
+    flexible ReadAttribute(struct {
+        path string:1024;
+    }) -> (struct {
+        content vector<byte>:MAX;
+    }) error zx.Status;
+
+    /// Write a sysfs/procfs attribute value.
+    /// Dispatches to the .ko module's store() callback (sysfs) or
+    /// fops->write callback (procfs).
+    flexible WriteAttribute(struct {
+        path string:1024;
+        content vector<byte>:MAX;
+    }) -> () error zx.Status;
+
+    /// Open a character device node for I/O.
+    /// Returns a Vfs DeviceHandle fd for subsequent DeviceRead/Write/Ioctl
+    /// calls through the Vfs protocol.
+    flexible OpenDevice(struct {
+        path string:1024;
+        flags uint32;
+    }) -> (struct {
+        fd uint32;
+    }) error zx.Status;
+};
+
+/// Event stream for filesystem changes. Created via DeviceFs::Watch().
+protocol DeviceFsWatcher {
+    /// Fired when entries are added, removed, or modified by .ko modules.
+    flexible -> OnEvent(FsEvent);
+};
