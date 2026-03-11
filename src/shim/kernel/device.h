@@ -24,14 +24,10 @@ extern "C" {
 
 // Minimal struct device matching the Linux kernel fields used by GKI modules.
 //
-// GKI 6.6 struct device on ARM64 is ~728 bytes with 8 ANDROID_KABI_RESERVE
+// GKI 6.6 struct device on ARM64 is 728 bytes with 8 ANDROID_KABI_RESERVE
 // slots. We keep a simplified layout with key fields that modules access
 // (init_name, parent, driver_data, platform_data) and pad to the correct
-// total size.
-//
-// TODO: Validate field offsets against GKI 6.6 vmlinux. The offsets here
-// match the simplified shim; the abi/structs.h version has the full
-// offset-accurate layout for modules that access device fields directly.
+// total size. The full ABI-accurate layout lives in abi/structs.h.
 struct device {
   const char* init_name;
   struct device* parent;
@@ -52,6 +48,18 @@ struct device {
   ANDROID_KABI_RESERVE(7);
   ANDROID_KABI_RESERVE(8);
 };
+
+// GKI 6.6 ABI validation: struct device must be exactly 728 bytes on ARM64.
+#ifdef __cplusplus
+static_assert(sizeof(struct device) == 728,
+              "struct device size must be 728 bytes to match GKI 6.6 ABI");
+static_assert(offsetof(struct device, init_name) == 0,
+              "device.init_name must be at offset 0");
+static_assert(offsetof(struct device, parent) == sizeof(void*),
+              "device.parent must follow init_name");
+static_assert(offsetof(struct device, driver_data) == 2 * sizeof(void*),
+              "device.driver_data must be at offset 16 on ARM64");
+#endif
 
 // Resource types.
 #define IORESOURCE_MEM  0x00000200

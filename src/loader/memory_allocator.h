@@ -10,6 +10,11 @@
 
 namespace driverhub {
 
+// Permission flags for Protect() — mirrors Zircon ZX_VM_PERM_* semantics.
+constexpr uint32_t kPermRead = 1;
+constexpr uint32_t kPermWrite = 2;
+constexpr uint32_t kPermExec = 4;
+
 // Represents a block of executable memory allocated for module sections.
 // The allocator owns the memory; call Release() or let the destructor clean up.
 struct MemoryAllocation {
@@ -18,6 +23,14 @@ struct MemoryAllocation {
 
   virtual ~MemoryAllocation();
   virtual void Release() = 0;
+
+  // Set memory permissions on a sub-range [base + offset, base + offset + len).
+  // Called after loading/relocation is complete to tighten permissions:
+  //   .text   → kPermRead | kPermExec
+  //   .data   → kPermRead | kPermWrite
+  //   .rodata → kPermRead
+  // Default implementation is a no-op (host mmap stays RWX).
+  virtual void Protect(size_t offset, size_t len, uint32_t perms);
 
   MemoryAllocation() = default;
   MemoryAllocation(const MemoryAllocation&) = delete;

@@ -20,7 +20,9 @@
 #include <cstdio>
 #include <cstring>
 
+#include "src/runner/symbol_proxy_server.h"
 #include "src/runner/symbol_registry_server.h"
+#include "src/runner/trampoline.h"
 
 namespace driverhub {
 
@@ -780,10 +782,46 @@ zx_status_t ManagedProcess::LoadModule(const uint8_t* data, size_t size,
           sym_addrs[i] = lookup.virtual_addr;
           continue;
         }
-        // FUNCTION symbols from non-colocated modules require a
-        // trampoline stub in the child that marshals calls over a
-        // SymbolProxy channel. This needs architecture-specific code
-        // generation and is deferred to a future phase.
+        // FUNCTION symbol from a non-colocated module: generate a
+        // trampoline stub that marshals calls over a SymbolProxy channel.
+        if (lookup.kind == fuchsia_driverhub::SymbolKind::kFunction &&
+            lookup.virtual_addr != 0) {
+          // Allocate a trampoline VMO if we haven't yet.
+          if (!trampoline_vmo_.is_valid()) {
+            constexpr size_t kTrampolineVmoSize = 64 * 1024;
+            zx::vmo::create(kTrampolineVmoSize, 0, &trampoline_vmo_);
+            if (trampoline_vmo_.is_valid()) {
+              trampoline_vmo_.set_property(ZX_PROP_NAME,
+                                            "dh-trampolines", 15);
+              trampoline_vmo_.replace_as_executable(zx::resource(),
+                                                     &trampoline_vmo_);
+              zx_vaddr_t addr = 0;
+              root_vmar_.map(
+                  ZX_VM_PERM_READ | ZX_VM_PERM_WRITE | ZX_VM_PERM_EXECUTE,
+                  0, trampoline_vmo_, 0, kTrampolineVmoSize, &addr);
+              trampoline_base_ = addr;
+            }
+          }
+
+          if (trampoline_vmo_.is_valid() && trampoline_base_ != 0) {
+            auto code = GenerateTrampoline(
+                trampoline_base_ + trampoline_offset_,
+                lookup.virtual_addr,
+                kMaxTrampolineArgs);
+
+            WriteTrampolineToVmo(trampoline_vmo_, trampoline_offset_,
+                                  code);
+
+            sym_addrs[i] = trampoline_base_ + trampoline_offset_;
+            trampoline_offset_ += AlignUp(code.size(), 64);
+
+            fprintf(stderr,
+                    "driverhub: process_manager: symbol %s -> "
+                    "trampoline at 0x%lx\n",
+                    sym_name, sym_addrs[i]);
+            continue;
+          }
+        }
       }
 
       if (sym_addrs[i] == 0) {

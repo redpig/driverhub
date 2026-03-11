@@ -15,6 +15,7 @@
 #include <lib/zx/vmo.h>
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -23,6 +24,9 @@
 namespace driverhub {
 
 class SymbolRegistryServer;
+struct ModuleProcessInfo;
+using ModuleProcessLookup =
+    std::function<bool(const std::string& module_name, ModuleProcessInfo* out)>;
 
 // Represents a process managed by the runner. Each process hosts one or more
 // .ko modules (multiple if they share a colocation group).
@@ -97,6 +101,12 @@ class ManagedProcess {
     size_t size = 0;
   };
   std::vector<ChildMapping> child_mappings_;
+
+  // Trampoline state for cross-process EXPORT_SYMBOL function calls.
+  // A single executable VMO holds all trampoline stubs for this process.
+  zx::vmo trampoline_vmo_;
+  zx_vaddr_t trampoline_base_ = 0;
+  uint64_t trampoline_offset_ = 0;
 
   // Async wait for process termination monitoring.
   std::unique_ptr<async::Wait> process_wait_;

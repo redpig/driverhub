@@ -9,9 +9,13 @@
 
 #include <unordered_map>
 
+#include "src/dt/dt_provider.h"
 #include "src/fuchsia/module_child_node.h"
+#include "src/fuchsia/module_enumerator.h"
 #include "src/fuchsia/resource_provider.h"
 #include "src/fuchsia/service_bridge.h"
+#include "src/loader/dependency_sort.h"
+#include "src/loader/modinfo_parser.h"
 #include "src/module_node/module_node.h"
 
 namespace driverhub {
@@ -132,26 +136,65 @@ zx::result<> DriverHubDriver::InitShims() {
 }
 
 zx::result<> DriverHubDriver::EnumerateModules() {
-  // In the Fuchsia build, modules are bundled as package resources under
-  // /pkg/data/modules/. The component manifest routes this directory.
-  //
-  // For now, this is a placeholder. The actual implementation will:
-  //   1. Open /pkg/data/modules/ from the incoming namespace.
-  //   2. Iterate over .ko files in the directory.
-  //   3. Read each into a VMO.
-  //   4. Load and create child nodes.
-  //
-  // Device tree configuration will also be read from /pkg/data/dt/ to
-  // determine load order and per-module configuration.
+  FDF_LOG(INFO, "Module enumeration: scanning package data");
 
-  FDF_LOG(INFO, "Module enumeration: scanning package data (stub)");
+  // Step 1: Read device tree configuration to determine which modules to load
+  // and their resource assignments. Try the DT visitor service first, then
+  // fall back to a JSON manifest or static .dtb blob.
+  VisitorDtProvider dt_provider;
+  auto dt_entries = dt_provider.GetModuleEntries();
+  FDF_LOG(INFO, "DT configuration: %zu module entries", dt_entries.size());
 
-  // TODO(driverhub): Implement package resource enumeration.
-  // This requires:
-  //   - fuchsia.io/Directory access to /pkg/data
-  //   - Reading .dtb configuration
-  //   - Topological sort of module dependencies
+  // Step 2: Enumerate .ko files from the package data directory.
+  auto modules = ModuleEnumerator::EnumerateFromDirectory(
+      "/pkg/data/modules");
 
+  if (modules.empty()) {
+    FDF_LOG(WARNING, "No .ko modules found in /pkg/data/modules/");
+    return zx::ok();
+  }
+
+  FDF_LOG(INFO, "Found %zu .ko module(s) in package data", modules.size());
+
+  // Step 3: Parse modinfo from each module to extract dependency information,
+  // then topologically sort by dependencies so that depended-upon modules are
+  // loaded first.
+  std::vector<std::pair<std::string, ModuleInfo>> module_infos;
+  for (const auto& entry : modules) {
+    ModuleInfo info;
+    ExtractModuleInfo(entry.data.data(), entry.data.size(), &info);
+    module_infos.emplace_back(entry.name, std::move(info));
+  }
+
+  std::vector<size_t> load_order;
+  if (!TopologicalSortModules(module_infos, &load_order)) {
+    FDF_LOG(WARNING, "Dependency cycle detected; loading in discovery order");
+    load_order.resize(modules.size());
+    for (size_t i = 0; i < modules.size(); i++) {
+      load_order[i] = i;
+    }
+  }
+
+  // Step 4: Load each module in dependency order and create child nodes.
+  size_t loaded = 0;
+  for (size_t idx : load_order) {
+    const auto& entry = modules[idx];
+    FDF_LOG(INFO, "Loading module [%zu/%zu]: %s (%zu bytes)",
+            loaded + 1, modules.size(), entry.name.c_str(),
+            entry.data.size());
+
+    auto status = LoadModule(entry.name, entry.data.data(), entry.data.size());
+    if (status.is_error()) {
+      FDF_LOG(ERROR, "Failed to load module %s: %s",
+              entry.name.c_str(), status.status_string());
+      // Continue loading remaining modules — one failure shouldn't block others.
+      continue;
+    }
+    loaded++;
+  }
+
+  FDF_LOG(INFO, "Module enumeration complete: %zu/%zu loaded successfully",
+          loaded, modules.size());
   return zx::ok();
 }
 

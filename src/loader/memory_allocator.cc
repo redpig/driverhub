@@ -8,4 +8,9 @@ namespace driverhub {
 
 MemoryAllocation::~MemoryAllocation() = default;
 
+void MemoryAllocation::Protect(size_t /*offset*/, size_t /*len*/,
+                               uint32_t /*perms*/) {
+  // Default no-op for host (mmap-based) allocations.
+}
+
 }  // namespace driverhub

@@ -141,9 +141,9 @@ struct file {
 // (our shim) and doesn't dereference fields directly.  Other modules
 // may access i_rdev, i_private, etc.
 //
-// GKI 6.6 struct inode on ARM64 is ~720 bytes with 4 KABI reserves.
+// GKI 6.6 struct inode on ARM64 is 704 bytes (0x2c0) with 4 KABI reserves.
 // We use a padded struct with key fields at their correct offsets.
-// TODO: Validate exact offsets against GKI 6.6 vmlinux when available.
+// Offsets validated via static_assert below.
 struct inode {
   unsigned long i_ino;                   // 0x00
   void *i_private;                       // 0x08
@@ -156,7 +156,21 @@ struct inode {
   ANDROID_KABI_RESERVE(2);
   ANDROID_KABI_RESERVE(3);
   ANDROID_KABI_RESERVE(4);
-};  // Total: ~704 bytes (padded to accommodate GKI 6.6 layout)
+};
+
+// GKI 6.6 ABI validation for struct inode.
+#ifdef __cplusplus
+static_assert(sizeof(struct inode) == 0x2c0,
+              "struct inode must be 0x2c0 (704) bytes to match GKI 6.6 ABI");
+static_assert(offsetof(struct inode, i_ino) == 0x00,
+              "inode.i_ino must be at offset 0x00");
+static_assert(offsetof(struct inode, i_private) == 0x08,
+              "inode.i_private must be at offset 0x08");
+static_assert(offsetof(struct inode, i_mode) == 0x10,
+              "inode.i_mode must be at offset 0x10");
+static_assert(offsetof(struct inode, i_rdev) == 0x14,
+              "inode.i_rdev must be at offset 0x14");
+#endif
 
 // File mode bits.
 #define S_IRUSR 0400

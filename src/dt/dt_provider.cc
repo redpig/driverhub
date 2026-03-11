@@ -10,6 +10,11 @@
 #include <fstream>
 #include <sstream>
 
+#ifdef __Fuchsia__
+#include <fidl/fuchsia.hardware.platform.bus/cpp/fidl.h>
+#include <lib/component/incoming/cpp/protocol.h>
+#endif
+
 // Minimal FDT (Flattened Device Tree) parsing for static .dtb blobs.
 //
 // FDT format (from devicetree specification):
@@ -397,29 +402,101 @@ std::string VisitorDtProvider::ModulePathFromCompatible(
 
 bool VisitorDtProvider::TryVisitorService(
     std::vector<DtModuleEntry>& entries) {
-  // In a real Fuchsia integration, this method would:
-  //
-  //   1. Open the fuchsia.hardware.platform.bus/PlatformBus protocol from the
-  //      incoming namespace.
-  //   2. Call GetBoardInfo() to get the board name and revision.
-  //   3. Use the device tree visitor API to walk the board's DT:
-  //        - For each node with a recognised "compatible" string, create a
-  //          DtModuleEntry with MMIO/IRQ resources from "reg" / "interrupts".
-  //        - Expose each node as a NodeProperty with the compatible string
-  //          for DFv2 bind rule matching.
-  //   4. Return true if the walk succeeds, false if the protocol is
-  //      unavailable or the board doesn't expose a DT.
-  //
-  // For now, the visitor service is not yet available in all board
-  // configurations, so we log what we would do and return false to trigger
-  // the manifest fallback path.
-
   fprintf(stderr,
           "driverhub: dt: visitor: attempting connection to DT visitor "
           "service...\n");
+
+#ifdef __Fuchsia__
+  // Connect to fuchsia.hardware.platform.bus/PlatformBus from the incoming
+  // namespace. This protocol provides board info and access to device tree
+  // nodes enumerated by the board driver.
+  auto client_end = component::Connect<fuchsia_hardware_platform_bus::PlatformBus>();
+  if (client_end.is_error()) {
+    fprintf(stderr,
+            "driverhub: dt: visitor: PlatformBus connect failed: %s\n",
+            client_end.status_string());
+    return false;
+  }
+
+  fidl::SyncClient client(std::move(*client_end));
+
+  // Get board info to log which board we're running on.
+  auto board_result = client->GetBoardInfo();
+  if (board_result.is_ok() && board_result->info().has_board_name()) {
+    fprintf(stderr, "driverhub: dt: visitor: board='%s'\n",
+            board_result->info().board_name()->c_str());
+  }
+
+  // Walk the device tree nodes exposed by the board driver.
+  // Each node with a "compatible" property maps to a module to load.
+  auto nodes_result = client->GetDeviceTreeNodes();
+  if (nodes_result.is_error()) {
+    fprintf(stderr,
+            "driverhub: dt: visitor: GetDeviceTreeNodes failed: %s\n",
+            nodes_result.error_value().FormatDescription().c_str());
+    return false;
+  }
+
+  for (const auto& node : nodes_result->nodes()) {
+    if (!node.has_compatible() || node.compatible().empty()) continue;
+
+    // Skip nodes with status != "okay" if status is present.
+    if (node.has_status() && node.status() != "okay") {
+      fprintf(stderr, "driverhub: dt: visitor: skipping '%s' (status='%s')\n",
+              node.compatible()[0].c_str(), node.status()->c_str());
+      continue;
+    }
+
+    DtModuleEntry entry;
+    entry.compatible = node.compatible()[0];
+    entry.module_path = ModulePathFromCompatible(entry.compatible);
+
+    // Extract MMIO resources from reg property.
+    if (node.has_mmio()) {
+      for (const auto& mmio : node.mmio()) {
+        DtModuleEntry::Resource res;
+        res.type = DtModuleEntry::Resource::kMmio;
+        res.base = mmio.base();
+        res.size = mmio.length();
+        entry.resources.push_back(res);
+      }
+    }
+
+    // Extract IRQ resources from interrupts property.
+    if (node.has_irqs()) {
+      for (const auto& irq : node.irqs()) {
+        DtModuleEntry::Resource res;
+        res.type = DtModuleEntry::Resource::kIrq;
+        res.base = irq.irq_number();
+        res.size = 0;
+        entry.resources.push_back(res);
+      }
+    }
+
+    fprintf(stderr,
+            "driverhub: dt: visitor: node '%s' -> module '%s' "
+            "(resources=%zu)\n",
+            entry.compatible.c_str(), entry.module_path.c_str(),
+            entry.resources.size());
+    entries.push_back(std::move(entry));
+  }
+
+  if (!entries.empty()) {
+    fprintf(stderr,
+            "driverhub: dt: visitor: enumerated %zu entries from DT "
+            "visitor service\n",
+            entries.size());
+    return true;
+  }
+
   fprintf(stderr,
-          "driverhub: dt: visitor: service not available in current "
-          "configuration, falling back to manifest\n");
+          "driverhub: dt: visitor: no compatible nodes found, falling "
+          "back to manifest\n");
+#else
+  fprintf(stderr,
+          "driverhub: dt: visitor: not available on host, falling back "
+          "to manifest\n");
+#endif  // __Fuchsia__
   return false;
 }
 

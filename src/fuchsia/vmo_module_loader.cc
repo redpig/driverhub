@@ -34,6 +34,30 @@ struct VmoAllocation : public MemoryAllocation {
     vmo.reset();
   }
 
+  void Protect(size_t offset, size_t len, uint32_t perms) override {
+    if (!base || offset + len > size) return;
+
+    // Align offset down and len up to page boundaries.
+    constexpr size_t kPage = 4096;
+    size_t aligned_start = offset & ~(kPage - 1);
+    size_t aligned_end = (offset + len + kPage - 1) & ~(kPage - 1);
+    if (aligned_end > size) aligned_end = size;
+
+    zx_vm_option_t options = 0;
+    if (perms & kPermRead) options |= ZX_VM_PERM_READ;
+    if (perms & kPermWrite) options |= ZX_VM_PERM_WRITE;
+    if (perms & kPermExec) options |= ZX_VM_PERM_EXECUTE;
+
+    zx_vaddr_t addr = reinterpret_cast<zx_vaddr_t>(base) + aligned_start;
+    zx_status_t status = zx::vmar::root_self()->protect(
+        options, addr, aligned_end - aligned_start);
+    if (status != ZX_OK) {
+      fprintf(stderr,
+              "driverhub: vmo protect [%#lx, +%zu) perms=%u failed: %d\n",
+              addr, aligned_end - aligned_start, perms, status);
+    }
+  }
+
   ~VmoAllocation() override { Release(); }
 };
 

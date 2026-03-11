@@ -17,11 +17,12 @@ namespace driverhub {
 
 // Fuchsia-specific memory allocator using VMOs for module sections.
 //
-// Uses VMOs mapped into the process VMAR with RWX permissions.
+// Allocates a single VMO mapped with RWX for loading and relocation, then
+// callers use Protect() to tighten per-section permissions:
+//   .text   → R+X
+//   .data   → R+W
+//   .rodata → R
 // Requires the caller to have the VMEX resource for executable mappings.
-//
-// TODO: Create separate VMOs per section type for proper permission
-// separation (RX for .text, RW for .data, R for .rodata).
 class VmoAllocator : public MemoryAllocator {
  public:
   MemoryAllocation* Allocate(size_t size) override;

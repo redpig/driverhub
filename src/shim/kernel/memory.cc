@@ -7,9 +7,28 @@
 #include <cstdlib>
 #include <cstring>
 
+#ifdef __Fuchsia__
+#include <lib/zx/vmar.h>
+#include <lib/zx/vmo.h>
+#include <zircon/process.h>
+
+#include <mutex>
+#include <unordered_map>
+
+// Track vmalloc allocations so vfree can unmap the correct size.
+namespace {
+struct VmallocEntry {
+  zx_vaddr_t addr;
+  size_t size;
+};
+std::mutex g_vmalloc_mu;
+std::unordered_map<uintptr_t, VmallocEntry> g_vmalloc_map;
+}  // namespace
+#endif  // __Fuchsia__
+
 // KMI memory shims: map Linux kernel allocators to userspace equivalents.
-// In Fuchsia, vmalloc/vfree would map to zx_vmar_map/zx_vmar_unmap. For now,
-// all allocators use the C library allocator since modules run in userspace.
+// On Fuchsia, vmalloc/vfree use zx_vmar_map/zx_vmar_unmap for page-aligned
+// allocation. On host (POSIX), they use the C library allocator.
 
 extern "C" {
 
@@ -43,18 +62,55 @@ void kfree(const void* p) {
 }
 
 void* vmalloc(unsigned long size) {
-  // TODO: Map to zx_vmar_map for page-aligned allocation on Fuchsia.
+#ifdef __Fuchsia__
+  if (size == 0) return nullptr;
+  // Round up to page size.
+  size_t alloc_size = (size + 4095) & ~4095UL;
+  zx::vmo vmo;
+  if (zx::vmo::create(alloc_size, 0, &vmo) != ZX_OK) return nullptr;
+  zx_vaddr_t addr = 0;
+  if (zx::vmar::root_self()->map(ZX_VM_PERM_READ | ZX_VM_PERM_WRITE,
+                                  0, vmo, 0, alloc_size, &addr) != ZX_OK) {
+    return nullptr;
+  }
+  {
+    std::lock_guard<std::mutex> lock(g_vmalloc_mu);
+    g_vmalloc_map[addr] = {addr, alloc_size};
+  }
+  return reinterpret_cast<void*>(addr);
+#else
   return malloc(size);
+#endif
 }
 
 void* vzalloc(unsigned long size) {
-  // TODO: Map to zx_vmar_map + zero fill on Fuchsia.
+#ifdef __Fuchsia__
+  // zx_vmo_create returns zero-filled pages, so vmalloc is sufficient.
+  return vmalloc(size);
+#else
   return calloc(1, size);
+#endif
 }
 
 void vfree(const void* addr) {
-  // TODO: Map to zx_vmar_unmap on Fuchsia.
+  if (!addr) return;
+#ifdef __Fuchsia__
+  uintptr_t key = reinterpret_cast<uintptr_t>(addr);
+  size_t unmap_size = 0;
+  {
+    std::lock_guard<std::mutex> lock(g_vmalloc_mu);
+    auto it = g_vmalloc_map.find(key);
+    if (it != g_vmalloc_map.end()) {
+      unmap_size = it->second.size;
+      g_vmalloc_map.erase(it);
+    }
+  }
+  if (unmap_size > 0) {
+    zx::vmar::root_self()->unmap(key, unmap_size);
+  }
+#else
   free(const_cast<void*>(addr));
+#endif
 }
 
 // kmem_cache — simplified slab allocator backed by malloc.
